@@ -3422,11 +3422,12 @@ async function saveCrossfitCompletion(keyPrefix){
   // EMOM queda sólo en session_completions, no contamina el sistema de PR).
   // Reutiliza score_type ya existentes ('rounds_reps','time') — ninguno nuevo.
   if(scoreType){
-    await sb.from('scores').insert({
+    const { error: scoreError } = await sb.from('scores').insert({
       user_id: currentUser.id,
       name: `CrossFit — Semana ${parsed.week} Día ${parsed.day+1}`,
       result: resumenScores, category: 'custom', score_type: scoreType,
     });
+    if(scoreError){ console.error('score bridge insert failed', scoreError); toast('Entrenamiento guardado, pero no se pudo registrar el score.', 'error'); }
   }
 
   if(msgEl){ msgEl.style.color='#8fd694'; msgEl.textContent='✓ Entrenamiento registrado'; }
@@ -5326,7 +5327,7 @@ function renderBlocksList(){
     if(!items || !items.length) return;
     html += `<div style="margin-top:10px;"><div style="font-size:11px; color:var(--lime); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">${BLOCK_CATEGORY_LABELS[cat]}</div>`;
     items.forEach(b=>{
-      html += `<div class="score-item"><span><b>${b.title}</b><br><span class="muted" style="font-size:11px;">${b.content.replace(/\n/g,' · ').slice(0,80)}</span></span>
+      html += `<div class="score-item"><span><b>${escapeHtml(b.title)}</b><br><span class="muted" style="font-size:11px;">${escapeHtml(b.content.replace(/\n/g,' · ').slice(0,80))}</span></span>
         <span style="display:flex; gap:8px; flex-shrink:0;">
           <span class="del" style="color:var(--lime);" onclick="editBlock('${b.id}')">Editar</span>
           <span class="del" onclick="deleteBlock('${b.id}')">Borrar</span>
@@ -5342,7 +5343,7 @@ function populateBlockPicker(){
   const picker = document.getElementById('insertBlockPicker');
   const items = _blocksCache.filter(b=>b.category===cat);
   picker.innerHTML = items.length
-    ? items.map(b=>`<option value="${b.id}">${b.title}</option>`).join('')
+    ? items.map(b=>`<option value="${b.id}">${escapeHtml(b.title)}</option>`).join('')
     : '<option value="">Sin bloques en esta categoría</option>';
 }
 
@@ -5480,10 +5481,10 @@ async function renderProgList(){
   if(error){ document.getElementById('progList').innerHTML = `<p class="muted">Error cargando programas: ${error.message}</p>`; return; }
   _progListCache = list || [];
   document.getElementById('progList').innerHTML = _progListCache.length ? _progListCache.map(p=>{
-    const sub = p.kind==='individual' ? `Individual — ${p.athlete_name||'sin nombre'}` : 'Grupal';
+    const sub = p.kind==='individual' ? `Individual — ${escapeHtml(p.athlete_name||'sin nombre')}` : 'Grupal';
     return `<div style="padding:10px 0; border-bottom:1px solid var(--border);">
       <div class="score-item" style="border:none; padding:0;">
-        <span><b>${p.name}</b><br><span class="muted">${sub} · ${p.weeks} semanas</span></span>
+        <span><b>${escapeHtml(p.name)}</b><br><span class="muted">${sub} · ${p.weeks} semanas</span></span>
         <span style="display:flex; gap:10px; flex-shrink:0; flex-wrap:wrap;">
           <span class="del" style="color:var(--lime);" onclick="toggleProgView('${p.id}')">Ver</span>
           <span class="del" style="color:var(--lime);" onclick="editProgram('${p.id}')">Editar</span>
@@ -5521,7 +5522,8 @@ function toggleProgView(programId){
 }
 
 async function deleteProgram(id){
-  await sb.from('programs').delete().eq('id', id);
+  const { error } = await sb.from('programs').delete().eq('id', id).eq('coach_id', currentUser.id);
+  if(error){ toast('Error al borrar el programa: '+error.message, 'error'); return; }
   await renderProgList();
   await populateActiveProgSelect();
 }
@@ -5590,11 +5592,11 @@ async function populateContinueFromSelect(){
   // `kind` es individual/grupal, no el enfoque. Se listan todos los programas;
   // onContinueFromChange() ya maneja con gracia el caso de un programa sin
   // sesiones de CrossFit reconocibles (ver el mensaje de abajo).
-  const { data: list } = await sb.from('programs').select('id,name').order('name');
+  const { data: list } = await sb.from('programs').select('id,name').eq('coach_id', currentUser.id).order('name');
   const sel = document.getElementById('genContinueFrom');
   const valorPrevio = sel.value;
   sel.innerHTML = '<option value="">— Ninguno, bloque independiente —</option>' +
-    (list||[]).map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+    (list||[]).map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
   sel.value = valorPrevio; // conserva la selección si ya había una al re-poblar
 }
 
@@ -5620,10 +5622,10 @@ async function onContinueFromChange(){
 }
 
 async function populateActiveProgSelect(){
-  const { data: list } = await sb.from('programs').select('id,name').order('name');
+  const { data: list } = await sb.from('programs').select('id,name').eq('coach_id', currentUser.id).order('name');
   const sel = document.getElementById('activeProgSelect');
   sel.innerHTML = '<option value="">— Ninguno —</option>' +
-    (list||[]).map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+    (list||[]).map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
   sel.value = cachedAssignment ? cachedAssignment.program_id : '';
   document.getElementById('activeProgStart').value = cachedAssignment ? cachedAssignment.start_date : '';
   renderActiveProgPreview();
@@ -5632,13 +5634,15 @@ async function onActiveProgChange(){ await saveActiveProgram(); }
 async function saveActiveProgram(){
   const programId = document.getElementById('activeProgSelect').value;
   const startDate = document.getElementById('activeProgStart').value;
+  let error;
   if(!programId){
-    if(cachedAssignment) await sb.from('assignments').delete().eq('id', cachedAssignment.assignment_id);
+    if(cachedAssignment) ({ error } = await sb.from('assignments').delete().eq('id', cachedAssignment.assignment_id));
   } else if(cachedAssignment){
-    await sb.from('assignments').update({program_id:programId, start_date:startDate}).eq('id', cachedAssignment.assignment_id);
+    ({ error } = await sb.from('assignments').update({program_id:programId, start_date:startDate}).eq('id', cachedAssignment.assignment_id));
   } else {
-    await sb.from('assignments').insert({athlete_id:currentUser.id, program_id:programId, start_date:startDate});
+    ({ error } = await sb.from('assignments').insert({athlete_id:currentUser.id, program_id:programId, start_date:startDate}));
   }
+  if(error){ toast('Error al guardar el programa activo: '+error.message, 'error'); return; }
   await refreshAssignment();
   renderActiveProgPreview();
   renderActiveProgramCard();
@@ -5776,12 +5780,12 @@ function renderActiveProgramCard(){
 
   if(r.status==='not_started'){
     document.getElementById('activeProgramBadge').textContent = '';
-    document.getElementById('activeProgramContent').innerHTML = `<p class="muted">Tu programa "${r.program.name}" empieza el ${r.startDate}.</p>`;
+    document.getElementById('activeProgramContent').innerHTML = `<p class="muted">Tu programa "${escapeHtml(r.program.name)}" empieza el ${r.startDate}.</p>`;
     return;
   }
   if(r.status==='finished'){
     document.getElementById('activeProgramBadge').textContent = 'Terminado';
-    document.getElementById('activeProgramContent').innerHTML = `<p class="muted">Terminaste el ciclo de "${r.program.name}" (${r.program.weeks} semanas). Pídele a tu coach el siguiente.</p>`;
+    document.getElementById('activeProgramContent').innerHTML = `<p class="muted">Terminaste el ciclo de "${escapeHtml(r.program.name)}" (${r.program.weeks} semanas). Pídele a tu coach el siguiente.</p>`;
     return;
   }
 
@@ -5800,7 +5804,7 @@ function renderActiveProgramCard(){
   }).join('');
 
   document.getElementById('activeProgramContent').innerHTML = `
-    <p class="muted" style="margin-bottom:8px;"><b>${r.program.name}</b></p>
+    <p class="muted" style="margin-bottom:8px;"><b>${escapeHtml(r.program.name)}</b></p>
     <div style="display:flex; gap:4px; margin-bottom:12px;">${calCells}</div>
     <div id="progDayDetail"></div>
   `;
@@ -5921,7 +5925,7 @@ async function renderInviteCodesList(){
   if(!data || !data.length){ el.innerHTML = ''; return; }
   el.innerHTML = data.map(c=>{
     const status = c.used_by ? `<span style="color:#8fd694;">Usado ${new Date(c.used_at).toLocaleDateString('es-CL')}</span>` : `<span class="muted">Sin usar</span>`;
-    return `<div class="score-item"><span><b>${c.code}</b>${c.note?` — <span class="muted">${c.note}</span>`:''}<br>${status}</span>
+    return `<div class="score-item"><span><b>${escapeHtml(c.code)}</b>${c.note?` — <span class="muted">${escapeHtml(c.note)}</span>`:''}<br>${status}</span>
       ${c.used_by ? '' : `<span class="del" onclick="deleteInviteCode('${c.code}')">Borrar</span>`}</div>`;
   }).join('');
 }
@@ -5932,12 +5936,14 @@ async function deleteInviteCode(code){
 
 async function markPaidToday(athleteId){
   const today = new Date().toISOString().slice(0,10);
-  await sb.from('profiles').update({ last_payment_date: today }).eq('id', athleteId);
+  const { error } = await sb.from('profiles').update({ last_payment_date: today }).eq('id', athleteId).eq('coach_id', currentUser.id);
+  if(error){ toast('Error al registrar pago: '+error.message, 'error'); return; }
   await renderAthletesList();
 }
 
 async function changeAthletePlan(athleteId, plan){
-  await sb.from('profiles').update({ plan }).eq('id', athleteId);
+  const { error } = await sb.from('profiles').update({ plan }).eq('id', athleteId).eq('coach_id', currentUser.id);
+  if(error){ toast('Error al cambiar el plan: '+error.message, 'error'); return; }
   await renderAthletesList();
 }
 
@@ -6122,7 +6128,7 @@ async function toggleAthleteProgress(athleteId){
   const sc = scoresData.data || [];
   if(sc.length){
     html += sec('Scores recientes', sc.slice(0,8).map(s=>
-      row(`${s.name} — <b>${s.result}</b> <span class="muted">(${s.entry_date})</span>`)).join(''));
+      row(`${escapeHtml(s.name)} — <b>${escapeHtml(s.result)}</b> <span class="muted">(${s.entry_date})</span>`)).join(''));
   } else html += sec('Scores', '<p class="muted" style="font-size:12px;">Sin scores.</p>');
 
   el.innerHTML = html;
@@ -6136,13 +6142,18 @@ async function confirmAssignAthlete(athleteId){
   const programId = document.getElementById(`assignProg_${athleteId}`).value;
   const startDate = document.getElementById(`assignDate_${athleteId}`).value;
   if(!programId || !startDate) return;
-  const { data: existing } = await sb.from('assignments').select('id').eq('athlete_id', athleteId).maybeSingle();
-  if(existing){
-    await sb.from('assignments').update({program_id:programId, start_date:startDate}).eq('id', existing.id);
-  } else {
-    await sb.from('assignments').insert({athlete_id:athleteId, program_id:programId, start_date:startDate});
+  const btn = event && event.currentTarget;
+  if(btn) btn.disabled = true;
+  try{
+    const { data: existing } = await sb.from('assignments').select('id').eq('athlete_id', athleteId).maybeSingle();
+    const { error } = existing
+      ? await sb.from('assignments').update({program_id:programId, start_date:startDate}).eq('id', existing.id)
+      : await sb.from('assignments').insert({athlete_id:athleteId, program_id:programId, start_date:startDate});
+    if(error){ toast('Error al asignar programa: '+error.message, 'error'); return; }
+    await renderAthletesList();
+  } finally {
+    if(btn) btn.disabled = false;
   }
-  await renderAthletesList();
 }
 
 /* ---------------- AUTOCOMPLETADO DE MOVIMIENTOS ---------------- */
