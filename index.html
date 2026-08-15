@@ -6868,6 +6868,7 @@ function _crossfit17cElegirPosicion(blockIndex, daysPerWeek, weeksCountTotal){
 function _crossfit17cElegirBenchmark(blockIndex, level){
   const disponibles = CROSSFIT_17C_TODOS_BENCHMARKS.filter(w =>
     level!=='principiante' || !CROSSFIT_17C_EXCLUIR_PRINCIPIANTE.test(w.desc));
+  if(!disponibles.length) return CROSSFIT_17C_TODOS_BENCHMARKS[_movIdx(blockIndex, 13) % CROSSFIT_17C_TODOS_BENCHMARKS.length];
   const idx = _movIdx(blockIndex, 13) % disponibles.length;
   return disponibles[idx];
 }
