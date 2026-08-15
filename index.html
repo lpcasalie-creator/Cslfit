@@ -130,6 +130,23 @@
   }
   .score-item .del{color:var(--danger); font-size:11px; cursor:pointer; text-transform:uppercase;}
 
+  #toastContainer{
+    position:fixed; left:0; right:0; bottom:calc(78px + env(safe-area-inset-bottom));
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+    z-index:999; padding:0 16px; pointer-events:none;
+  }
+  .toast{
+    max-width:460px; width:100%; box-sizing:border-box;
+    background:var(--card); border:1px solid var(--border); border-left:4px solid var(--gray-dim);
+    border-radius:8px; padding:12px 14px; font-size:13px; color:var(--white);
+    box-shadow:0 4px 16px rgba(0,0,0,0.4); animation:toastIn .2s ease-out;
+  }
+  .toast.error{border-left-color:var(--danger);}
+  .toast.success{border-left-color:var(--lime);}
+  .toast.fade-out{animation:toastOut .2s ease-in forwards;}
+  @keyframes toastIn{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);}}
+  @keyframes toastOut{from{opacity:1;} to{opacity:0; transform:translateY(8px);}}
+
   footer.brandfoot{
     text-align:center; padding:16px; color:var(--gray-dim); font-size:11px;
     letter-spacing:0.5px;
@@ -170,6 +187,8 @@
 </style>
 </head>
 <body>
+
+<div id="toastContainer"></div>
 
 <!-- AUTH GATE -->
 <div id="authGate" style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;">
@@ -871,6 +890,18 @@ function escapeHtml(str){
   return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+function toast(message, type='info'){
+  const container = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = message;
+  container.appendChild(el);
+  setTimeout(()=>{
+    el.classList.add('fade-out');
+    setTimeout(()=>el.remove(), 200);
+  }, 3500);
+}
+
 /* ---------------- NAV ---------------- */
 // ================= Fase UX-01 — Paso 1 (revisado): 6 pestañas =================
 // Home y Movimientos son directas (sin submenú); WOD/RM/Scores/Programación
@@ -948,7 +979,7 @@ async function saveWod(){
   const { error } = await sb.from('wod_notes').upsert({
     user_id: currentUser.id, name, detail, updated_at: new Date().toISOString()
   });
-  if(error){ alert('Error al guardar: '+error.message); return; }
+  if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
   document.getElementById('wodSavedCard').style.display='block';
   document.getElementById('wodSavedText').textContent = `${name} — ${detail}`;
 }
@@ -1320,7 +1351,7 @@ async function saveRM(){
   const { error } = await sb.from('rm_entries').insert({
     user_id: currentUser.id, movement, rm: lastRM
   });
-  if(error){ alert('Error al guardar: '+error.message); return; }
+  if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
   await renderRMHistory();
   await populateRMChartMovements();
 }
@@ -1375,7 +1406,7 @@ async function setPctValue(name, field, val){
   _pctDataCache[name][field] = (field==='pr') ? weightInputToKg(val) : val;
   renderPctTable();
   const { error } = await sb.from('pct_data').upsert({ user_id: currentUser.id, data: _pctDataCache, updated_at: new Date().toISOString() });
-  if(error){ console.error('setPctValue failed', error); alert('No se pudo guardar: ' + error.message); }
+  if(error){ console.error('setPctValue failed', error); toast('No se pudo guardar: ' + error.message, 'error'); }
 }
 async function resetPctTable(){
   _pctDataCache = {};
@@ -1473,7 +1504,7 @@ async function saveBody(){
   const { error } = existing
     ? await sb.from('body_entries').update(row).eq('id', existing.id)
     : await sb.from('body_entries').insert(row);
-  if(error){ alert('Error al guardar: '+error.message); return; }
+  if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
   ['bodyWeight','bodyPGC','bodySMM','bodyFatMass','bodyBMI','bodyVisceral','bodyWater','bodyBMR'].forEach(id=>document.getElementById(id).value='');
   await renderBodyList();
   await populateBodyChart();
@@ -1559,7 +1590,7 @@ async function saveSkills(){
   const { error } = existing
     ? await sb.from('skills_entries').update(entry).eq('id', existing.id)
     : await sb.from('skills_entries').insert(entry);
-  if(error){ alert('Error al guardar: '+error.message); return; }
+  if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
   await refreshSkillsHistory();
   populateSkillsDates();
   renderSkillsHistory();
@@ -5240,7 +5271,7 @@ async function saveBlock(){
   const category = document.getElementById('blockCategory').value;
   const title = document.getElementById('blockTitle').value.trim();
   const content = document.getElementById('blockContent').value.trim();
-  if(!title || !content){ alert('Completa el título y el contenido del bloque.'); return; }
+  if(!title || !content){ toast('Completa el título y el contenido del bloque.', 'info'); return; }
 
   let error;
   if(_editingBlockId){
@@ -5248,7 +5279,7 @@ async function saveBlock(){
   } else {
     ({ error } = await sb.from('blocks').insert({ coach_id: currentUser.id, category, title, content }));
   }
-  if(error){ alert('Error al guardar el bloque: '+error.message); return; }
+  if(error){ toast('Error al guardar el bloque: '+error.message, 'error'); return; }
 
   _editingBlockId = null;
   document.getElementById('blockTitle').value = '';
@@ -5317,7 +5348,7 @@ function populateBlockPicker(){
 
 function insertBlockIntoField(){
   if(!_lastFocusedField || !document.body.contains(_lastFocusedField)){
-    alert('Primero toca el campo (Fuerza, Skills o WOD) donde quieres insertar el bloque.');
+    toast('Primero toca el campo (Fuerza, Skills o WOD) donde quieres insertar el bloque.', 'info');
     return;
   }
   const blockId = document.getElementById('insertBlockPicker').value;
@@ -5427,7 +5458,7 @@ async function saveProgram(){
     console.warn('La columna `sessions` aún no existe en Supabase; se guarda sin estructura. Ejecuta: ALTER TABLE programs ADD COLUMN sessions jsonb;');
     ({ error } = await escribir(sinSessions));
   }
-  if(error){ alert('Error al guardar el programa: '+error.message); return; }
+  if(error){ toast('Error al guardar el programa: '+error.message, 'error'); return; }
 
   const wasEditing = !!_editingProgramId;
   _editingProgramId = null;
@@ -5439,7 +5470,7 @@ async function saveProgram(){
   document.getElementById('progSaveBtn').textContent = 'Guardar programa';
   document.getElementById('progSaveBtn').style.display='none';
   document.getElementById('progCancelBtn').style.display='none';
-  if(wasEditing) alert('Cambios guardados.');
+  if(wasEditing) toast('Cambios guardados.', 'success');
 }
 
 let _progListCache = [];
@@ -5497,7 +5528,7 @@ async function deleteProgram(id){
 
 async function exportProgram(id){
   const { data: program, error } = await sb.from('programs').select('*').eq('id', id).single();
-  if(error || !program){ alert('No se pudo exportar.'); return; }
+  if(error || !program){ toast('No se pudo exportar.', 'error'); return; }
   const blob = new Blob([JSON.stringify(program, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -5528,7 +5559,7 @@ function importProgramFile(){
       await populateActiveProgSelect();
       document.getElementById('progImportFile').value='';
     }catch(err){
-      alert('No se pudo importar el archivo: '+err.message);
+      toast('No se pudo importar el archivo: '+err.message, 'error');
     }
   };
   reader.readAsText(file);
@@ -5681,7 +5712,7 @@ async function submitReadiness(){
     joint_discomfort: document.getElementById('readinessJoint').value === 'si',
   };
   const { error } = await sb.from('readiness_checkins').upsert(payload, { onConflict: 'user_id,checkin_date' });
-  if(error){ alert('Error al registrar: '+error.message); return; }
+  if(error){ toast('Error al registrar: '+error.message, 'error'); return; }
   await loadTodayReadiness();
   renderActiveProgramCard();
 }
@@ -5882,7 +5913,7 @@ function copyInviteLink(link){
   navigator.clipboard.writeText(link).then(()=>{
     const result = document.getElementById('inviteResult');
     result.innerHTML += '<br><span style="color:#8fd694; font-size:12px;">✓ Copiado</span>';
-  }).catch(()=>{ alert('No se pudo copiar. Selecciona el link manualmente.'); });
+  }).catch(()=>{ toast('No se pudo copiar. Selecciona el link manualmente.', 'error'); });
 }
 async function renderInviteCodesList(){
   const { data } = await sb.from('invite_codes').select('*').eq('created_by', currentUser.id).order('created_at', {ascending:false});
@@ -6877,7 +6908,7 @@ function getCanvasClickCoords(evt){
 
 function onBarCanvasClick(evt){
   evt.preventDefault();
-  if(!barCtx){ alert('El video aún no ha terminado de cargar. Espera 1-2 segundos y toca de nuevo.'); return; }
+  if(!barCtx){ toast('El video aún no ha terminado de cargar. Espera 1-2 segundos y toca de nuevo.', 'info'); return; }
   const {x,y} = getCanvasClickCoords(evt);
   const mode = document.getElementById('barMode').value;
   if(mode === 'calib'){
@@ -6946,8 +6977,8 @@ function drawSimpleLineChart(canvasId, values){
 }
 
 function calculateBarMetrics(){
-  if(!barCalibRatio){ alert('Primero calibra con una distancia conocida (modo Calibrar, 2 puntos).'); return; }
-  if(barPoints.length<2){ alert('Necesitas al menos 2 puntos marcados (modo Marcar barra).'); return; }
+  if(!barCalibRatio){ toast('Primero calibra con una distancia conocida (modo Calibrar, 2 puntos).', 'info'); return; }
+  if(barPoints.length<2){ toast('Necesitas al menos 2 puntos marcados (modo Marcar barra).', 'info'); return; }
   const sorted = [...barPoints].sort((a,b)=>a.t-b.t);
   let peakV = 0;
   const velocities = [];
@@ -6961,7 +6992,7 @@ function calculateBarMetrics(){
     velocities.push(v);
     if(v>peakV) peakV = v;
   }
-  if(!velocities.length){ alert('No se pudo calcular — revisa que los puntos tengan tiempos distintos.'); return; }
+  if(!velocities.length){ toast('No se pudo calcular — revisa que los puntos tengan tiempos distintos.', 'error'); return; }
   const avgV = velocities.reduce((s,x)=>s+x,0)/velocities.length;
   _lastBarMetrics = { peakV, avgV, velocities };
   document.getElementById('barResults').innerHTML = `
@@ -6973,7 +7004,7 @@ function calculateBarMetrics(){
 }
 
 async function saveBarAnalysis(){
-  if(!_lastBarMetrics){ alert('Primero calcula las métricas.'); return; }
+  if(!_lastBarMetrics){ toast('Primero calcula las métricas.', 'info'); return; }
   const movement = document.getElementById('barMovementName').value.trim() || 'Sin nombre';
   const { error } = await sb.from('wl_analysis').insert({
     user_id: currentUser.id,
@@ -6982,7 +7013,7 @@ async function saveBarAnalysis(){
     avg_velocity: _lastBarMetrics.avgV,
     points: barPoints,
   });
-  if(error){ alert('Error al guardar: '+error.message); return; }
+  if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
   document.getElementById('barMovementName').value='';
   await renderBarAnalysisList();
 }
@@ -7061,7 +7092,7 @@ async function saveScore(){
   const { error } = await sb.from('scores').insert({
     user_id: currentUser.id, name, result, category:cat, score_type:scoreType
   });
-  if(error){ alert('Error al guardar: '+error.message); return; }
+  if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
   document.getElementById('scoreName').value='';
   document.getElementById('scoreResult').value='';
   await renderScores();
@@ -7171,7 +7202,7 @@ async function signUpWithCode(){
   }
 
   if(data.session){
-    if(consumeFailed) alert('Tu cuenta se creó, pero no se pudo vincular al código de invitación. Contacta a tu coach para que te asigne manualmente.');
+    if(consumeFailed) toast('Tu cuenta se creó, pero no se pudo vincular al código de invitación. Contacta a tu coach para que te asigne manualmente.', 'error');
     onLoggedIn(data.session.user);
   } else if(consumeFailed){
     msg.style.color = '#ff8c8c';
