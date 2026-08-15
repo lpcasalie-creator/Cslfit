@@ -4535,13 +4535,31 @@ function _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domai
     wodTexto = `AMRAP ${cap}' (${estructuraLabel} CrossFit):\n${wodLines.join('\n')}`;
 
   } else if(wodFormat === 'For Time' || wodFormat === 'Single' || wodFormat === 'For Time 4'){
-    const rounds = _crossfitForTimeRounds(elegidos, opts.level, domain, opts);
     const total = CROSSFIT_TOTAL_VOLUME_TARGET[opts.level][domain];
     const repsPerMovementTotal = Math.round(total / Math.max(1, elegidos.length));
-    const wodLines = elegidos.map((e,i)=>
-      _crossfitVolumeBasedPrescribe(e.name, wi, ti+i+regenSeedWod*5, opts.level, domain, repsPerMovementTotal, rounds, false));
     estructuraLabel = elegidos.length===1 ? 'Single' : elegidos.length===4 ? 'Quadruplet' : elegidos.length===3 ? 'Triplet' : 'Couplet';
-    wodTexto = `${rounds} rondas For Time (cap ${cap}') (${estructuraLabel} CrossFit):\n${wodLines.join('\n')}`;
+    if(elegidos.length === 1){
+      // Feedback directo de Luis: "6 rondas de 5 muscle-ups" no tiene lógica como
+      // estímulo For Time — con un solo movimiento se colapsa a UN total, no a
+      // rondas × reps ("30 Muscle-Ups por tiempo" en vez de "6x5").
+      const mov = elegidos[0].name;
+      const linea = _crossfitVolumeBasedPrescribe(mov, wi, ti+regenSeedWod*5, opts.level, domain, repsPerMovementTotal, 1, false);
+      // Si _crossfitVolumeBasedPrescribe delegó en _crossfitPrescribe (movimiento no
+      // apto para volumen alto, ej. Muscle-up), esa cifra es "por serie" — se
+      // multiplica por las rondas que hubiera tenido para armar el total real.
+      let lineaFinal = linea;
+      if(_crossfitPrescriptionType(mov) === 'REPS' && linea === _crossfitPrescribe(mov, wi, ti+regenSeedWod*5, opts.level, domain)){
+        const rounds = _crossfitForTimeRounds(elegidos, opts.level, domain, opts);
+        const m = linea.match(/^(\d+)(\s.*)$/);
+        if(m) lineaFinal = `${parseInt(m[1],10)*rounds}${m[2]}`;
+      }
+      wodTexto = `For Time (cap ${cap}') (${estructuraLabel} CrossFit):\n${lineaFinal}`;
+    } else {
+      const rounds = _crossfitForTimeRounds(elegidos, opts.level, domain, opts);
+      const wodLines = elegidos.map((e,i)=>
+        _crossfitVolumeBasedPrescribe(e.name, wi, ti+i+regenSeedWod*5, opts.level, domain, repsPerMovementTotal, rounds, false));
+      wodTexto = `${rounds} rondas For Time (cap ${cap}') (${estructuraLabel} CrossFit):\n${wodLines.join('\n')}`;
+    }
 
   } else if(wodFormat === 'EMOM'){
     const capRedondeado = Math.max(nSlots, Math.round(cap / nSlots) * nSlots);
