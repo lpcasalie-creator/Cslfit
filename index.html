@@ -5887,19 +5887,26 @@ async function changeAthletePlan(athleteId, plan){
   await renderAthletesList();
 }
 
-async function getLastActivity(athleteId){
+async function getLastActivityMap(athleteIds){
+  if(!athleteIds.length) return {};
   const [rm, body, skills, scores, wod] = await Promise.all([
-    sb.from('rm_entries').select('created_at').eq('user_id', athleteId).order('created_at',{ascending:false}).limit(1),
-    sb.from('body_entries').select('created_at').eq('user_id', athleteId).order('created_at',{ascending:false}).limit(1),
-    sb.from('skills_entries').select('created_at').eq('user_id', athleteId).order('created_at',{ascending:false}).limit(1),
-    sb.from('scores').select('created_at').eq('user_id', athleteId).order('created_at',{ascending:false}).limit(1),
-    sb.from('wod_notes').select('updated_at').eq('user_id', athleteId).limit(1),
+    sb.from('rm_entries').select('user_id, created_at').in('user_id', athleteIds),
+    sb.from('body_entries').select('user_id, created_at').in('user_id', athleteIds),
+    sb.from('skills_entries').select('user_id, created_at').in('user_id', athleteIds),
+    sb.from('scores').select('user_id, created_at').in('user_id', athleteIds),
+    sb.from('wod_notes').select('user_id, updated_at').in('user_id', athleteIds),
   ]);
-  const dates = [rm,body,skills,scores].map(r=> r.data && r.data[0] ? r.data[0].created_at : null);
-  dates.push(wod.data && wod.data[0] ? wod.data[0].updated_at : null);
-  const valid = dates.filter(Boolean).map(d=>new Date(d));
-  if(!valid.length) return null;
-  return new Date(Math.max(...valid));
+  const map = {};
+  const consider = (rows, dateField) => (rows.data||[]).forEach(r=>{
+    const d = new Date(r[dateField]);
+    if(!map[r.user_id] || d > map[r.user_id]) map[r.user_id] = d;
+  });
+  consider(rm, 'created_at');
+  consider(body, 'created_at');
+  consider(skills, 'created_at');
+  consider(scores, 'created_at');
+  consider(wod, 'updated_at');
+  return map;
 }
 
 async function renderAthletesList(){
@@ -5921,9 +5928,9 @@ async function renderAthletesList(){
     : '<option value="">Crea un programa primero</option>';
 
   // Calcular estado de pago por alumno y ordenar: sin pago > atrasado > por vencer > al día
-  const lastActivities = await Promise.all(athletes.map(a => getLastActivity(a.id)));
+  const lastActivityMap = await getLastActivityMap(athletes.map(a => a.id));
 
-  const withPayment = athletes.map((a, idx)=>{
+  const withPayment = athletes.map((a)=>{
     let days = null, urgency = 0; // 0=al día, 1=por vencer, 2=atrasado, 3=sin pago nunca
     if(!a.last_payment_date){ urgency = 3; }
     else {
@@ -5931,7 +5938,7 @@ async function renderAthletesList(){
       if(days > 30) urgency = 2;
       else if(days > 23) urgency = 1;
     }
-    const lastActivity = lastActivities[idx];
+    const lastActivity = lastActivityMap[a.id] || null;
     const inactiveDays = lastActivity ? Math.floor((new Date() - lastActivity) / 86400000) : null;
     const isInactive = inactiveDays === null || inactiveDays > 7;
     return {...a, _days:days, _urgency:urgency, _lastActivity:lastActivity, _inactiveDays:inactiveDays, _isInactive:isInactive};
