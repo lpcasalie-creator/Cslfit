@@ -4400,10 +4400,16 @@ function _crossfit17a2FamiliaSkill(name){
 // factoriza lo que antes era código único dentro de _crossfitDay(), ahora
 // reutilizable para múltiples movimientos por día.
 function _crossfit17a2Pick(pool, wi, ti, opts, srcKey){
-  let mov = _pickSafe(pool, wi, opts, srcKey, ti);
+  // Bug reportado por Luis: Fuerza/Skills se repetían en días seguidos. Causa:
+  // esta función usaba _pickSafe (sin memoria) en vez de _pickDedup (con memoria
+  // semanal vía opts._used) — el mismo mecanismo anti-repetición que el metcon
+  // ya usa desde Fase 17B, pero que Fuerza/Skills (agregado en 17A.2/18) nunca
+  // consultaba ni alimentaba.
+  let mov = _pickDedup(pool, wi, ti, opts, srcKey);
   if(opts.level==='principiante' && _crossfitDifficulty(mov)==='ADVANCED' && CROSSFIT_BEGINNER_SUB_LOCAL[srcKey]){
     const subPool = CROSSFIT_BEGINNER_SUB_LOCAL[srcKey];
     mov = Array.isArray(subPool) ? subPool[_movIdx(wi, ti) % subPool.length] : subPool;
+    if(opts._used) opts._used.add(mov);
   }
   return mov;
 }
