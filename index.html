@@ -7134,22 +7134,29 @@ function drawSimpleLineChart(canvasId, values){
   ctx.stroke();
 }
 
-function calculateBarMetrics(){
-  if(!barCalibRatio){ toast('Primero calibra con una distancia conocida (modo Calibrar, 2 puntos).', 'info'); return; }
-  if(barPoints.length<2){ toast('Necesitas al menos 2 puntos marcados (modo Marcar barra).', 'info'); return; }
-  const sorted = [...barPoints].sort((a,b)=>a.t-b.t);
+// Extraída de calculateBarMetrics() para reutilizarla también al revisar un
+// análisis ya guardado (mismos puntos + misma calibración = mismo resultado).
+function _barComputeVelocities(points, calibRatio){
+  const sorted = [...points].sort((a,b)=>a.t-b.t);
   let peakV = 0;
   const velocities = [];
   for(let i=1;i<sorted.length;i++){
     const dt = sorted[i].t - sorted[i-1].t;
     if(dt<=0) continue;
-    const dx = (sorted[i].x - sorted[i-1].x) * barCalibRatio;
-    const dy = (sorted[i].y - sorted[i-1].y) * barCalibRatio;
+    const dx = (sorted[i].x - sorted[i-1].x) * calibRatio;
+    const dy = (sorted[i].y - sorted[i-1].y) * calibRatio;
     const distCm = Math.sqrt(dx*dx+dy*dy);
     const v = (distCm/100) / dt; // m/s
     velocities.push(v);
     if(v>peakV) peakV = v;
   }
+  return { peakV, velocities };
+}
+
+function calculateBarMetrics(){
+  if(!barCalibRatio){ toast('Primero calibra con una distancia conocida (modo Calibrar, 2 puntos).', 'info'); return; }
+  if(barPoints.length<2){ toast('Necesitas al menos 2 puntos marcados (modo Marcar barra).', 'info'); return; }
+  const { peakV, velocities } = _barComputeVelocities(barPoints, barCalibRatio);
   if(!velocities.length){ toast('No se pudo calcular — revisa que los puntos tengan tiempos distintos.', 'error'); return; }
   const avgV = velocities.reduce((s,x)=>s+x,0)/velocities.length;
   _lastBarMetrics = { peakV, avgV, velocities };
@@ -7164,29 +7171,100 @@ function calculateBarMetrics(){
 async function saveBarAnalysis(){
   if(!_lastBarMetrics){ toast('Primero calcula las métricas.', 'info'); return; }
   const movement = document.getElementById('barMovementName').value.trim() || 'Sin nombre';
-  const { error } = await sb.from('wl_analysis').insert({
+  const payload = {
     user_id: currentUser.id,
     movement,
     peak_velocity: _lastBarMetrics.peakV,
     avg_velocity: _lastBarMetrics.avgV,
     points: barPoints,
-  });
+    calib_ratio: barCalibRatio,
+  };
+  let { error } = await sb.from('wl_analysis').insert(payload);
+  // La columna `calib_ratio` puede no existir todavía en Supabase (se agregó para
+  // poder reconstruir el gráfico de velocidad al revisar un análisis guardado).
+  // Si falta, se reintenta sin ella para que guardar nunca deje de funcionar —
+  // mismo criterio defensivo que ya usa saveActiveProgram con `sessions`.
+  if(error && /calib_ratio/i.test(error.message || '') && /column|schema|does not exist/i.test(error.message || '')){
+    const { calib_ratio: _omitido, ...sinCalib } = payload;
+    console.warn('La columna `calib_ratio` aún no existe en Supabase; se guarda sin ella (no se podrá revisar el gráfico después). Ejecuta: ALTER TABLE wl_analysis ADD COLUMN calib_ratio numeric;');
+    ({ error } = await sb.from('wl_analysis').insert(sinCalib));
+  }
   if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
   document.getElementById('barMovementName').value='';
   await renderBarAnalysisList();
 }
 
+let _barAnalysisCache = [];
 async function renderBarAnalysisList(){
   const el = document.getElementById('barAnalysisList');
   const { data, error } = await sb.from('wl_analysis').select('*').eq('user_id', currentUser.id).order('created_at',{ascending:false});
   if(error){ el.innerHTML = `<p class="muted">Error: ${error.message}</p>`; return; }
-  if(!data || !data.length){ el.innerHTML = '<p class="muted">Sin análisis guardados todavía.</p>'; return; }
-  el.innerHTML = data.map(a=>`<div class="score-item">
-      <span><b>${a.movement}</b> — pico ${Number(a.peak_velocity).toFixed(2)} m/s, prom ${Number(a.avg_velocity).toFixed(2)} m/s<br>
-      <span class="muted">${new Date(a.created_at).toLocaleDateString('es-CL')}</span></span>
-      <span class="del" onclick="deleteBarAnalysis('${a.id}')">Borrar</span>
+  _barAnalysisCache = data || [];
+  if(!_barAnalysisCache.length){ el.innerHTML = '<p class="muted">Sin análisis guardados todavía.</p>'; return; }
+  el.innerHTML = _barAnalysisCache.map(a=>`<div class="score-item" style="flex-direction:column; align-items:stretch;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+        <span><b>${escapeHtml(a.movement)}</b> — pico ${Number(a.peak_velocity).toFixed(2)} m/s, prom ${Number(a.avg_velocity).toFixed(2)} m/s<br>
+        <span class="muted">${new Date(a.created_at).toLocaleDateString('es-CL')}</span></span>
+        <span style="display:flex; gap:10px; flex-shrink:0;">
+          <span class="del" style="color:var(--lime);" onclick="toggleBarAnalysisDetail('${a.id}')">Ver</span>
+          <span class="del" onclick="deleteBarAnalysis('${a.id}')">Borrar</span>
+        </span>
+      </div>
+      <div id="barDetail_${a.id}" style="display:none; margin-top:10px;"></div>
     </div>`).join('');
 }
+
+// Reconstruye trayectoria + curva de velocidad de un análisis ya guardado, sin
+// necesitar el video original — solo los puntos (x,y,t) y la calibración
+// (cm/pixel) que quedaron guardados junto al análisis.
+function drawBarTrajectory(canvasId, points){
+  const c = document.getElementById(canvasId);
+  if(!c || !points.length) return;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0,0,c.width,c.height);
+  const xs = points.map(p=>p.x), ys = points.map(p=>p.y);
+  const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+  const spanX = Math.max(1, maxX-minX), spanY = Math.max(1, maxY-minY);
+  const pad = 20;
+  const scale = Math.min((c.width-pad*2)/spanX, (c.height-pad*2)/spanY);
+  const toCanvas = p => ({
+    x: pad + (p.x-minX)*scale,
+    y: c.height - pad - (p.y-minY)*scale, // invierte Y: en video crece hacia abajo, acá "arriba" queda arriba
+  });
+  const sorted = [...points].sort((a,b)=>a.t-b.t);
+  ctx.strokeStyle = '#CCFF00'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  sorted.forEach((p,i)=>{ const cp=toCanvas(p); if(i===0) ctx.moveTo(cp.x,cp.y); else ctx.lineTo(cp.x,cp.y); });
+  ctx.stroke();
+  const start = toCanvas(sorted[0]);
+  ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(start.x,start.y,4,0,Math.PI*2); ctx.fill();
+  const end = toCanvas(sorted[sorted.length-1]);
+  ctx.fillStyle = '#ff4d4d'; ctx.beginPath(); ctx.arc(end.x,end.y,4,0,Math.PI*2); ctx.fill();
+}
+
+function toggleBarAnalysisDetail(id){
+  const el = document.getElementById(`barDetail_${id}`);
+  if(!el) return;
+  if(el.style.display !== 'none'){ el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  const a = _barAnalysisCache.find(x=>x.id===id);
+  const points = a && a.points;
+  if(!a || !points || !points.length){ el.innerHTML = '<p class="muted" style="font-size:12px;">Sin puntos guardados para este análisis.</p>'; return; }
+  if(!a.calib_ratio){
+    el.innerHTML = '<p class="muted" style="font-size:12px;">Este análisis se guardó antes de que la app registrara la calibración — solo quedaron los promedios. Los análisis nuevos van a poder revisarse en detalle.</p>';
+    return;
+  }
+  el.innerHTML = `
+    <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px;">Trayectoria de la barra</div>
+    <canvas id="barTraj_${id}" width="300" height="180" style="width:100%; max-width:300px; background:#000; border-radius:6px;"></canvas>
+    <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:.05em; margin:10px 0 4px;">Velocidad por tramo</div>
+    <canvas id="barVelDetail_${id}" width="300" height="120" style="width:100%; max-width:300px;"></canvas>
+  `;
+  drawBarTrajectory(`barTraj_${id}`, points);
+  const { velocities } = _barComputeVelocities(points, a.calib_ratio);
+  drawSimpleLineChart(`barVelDetail_${id}`, velocities);
+}
+
 async function deleteBarAnalysis(id){
   await sb.from('wl_analysis').delete().eq('id', id);
   await renderBarAnalysisList();
