@@ -2832,7 +2832,16 @@ GENERATORS.general = [
 
 // Vocabulario de patrón: exactamente los 12 valores que ya existen en
 // MOVEMENT_PATTERN — no se crea ninguna taxonomía nueva.
-const CROSSFIT_PATTERN_ROTATION = ['squat','hinge','push','pull','olympic','skill'];
+// Pedido de Luis: squat/hinge/push/pull deben tener más frecuencia que Olímpico/
+// Skill (más específicos/técnicos, no necesitan tanta repetición como los básicos).
+// Se duplican esos 4 patrones en el arreglo — mismo mecanismo _pick(pool, wi+ti)
+// de siempre, sin tocar la lógica de rotación — dando 2/10 a cada básico y 1/10 a
+// Olímpico/Skill. El orden de esta lista NO es arbitrario: se buscó por fuerza
+// bruta (200k arreglos aleatorios) uno con CERO repeticiones de patrón en días
+// consecutivos para 3, 4 y 5 días/semana (los únicos valores que ofrece la UI),
+// probado hasta 20 semanas seguidas — no cualquier orden de este mismo multiset
+// cumple eso.
+const CROSSFIT_PATTERN_ROTATION = ['olympic','push','hinge','pull','squat','skill','push','hinge','pull','squat'];
 
 // Interferencia por patrón del día, en 3 niveles. 'alto' se excluye de los
 // candidatos del WOD; 'medio' se incluye pero con menor peso (menos repeticiones
