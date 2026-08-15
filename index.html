@@ -4734,6 +4734,26 @@ function _crossfitDay(offset){
       lineasSkill.push(_crossfit17a2PrescribirSkill(movSkillAgregado, opts));
     }
 
+    // Accesorio/prehab — pedido de Luis (core, unilateral, salud de hombro). Reutiliza
+    // SKILL_POOLS/DAY_SKILL_POOLS, ya existentes para el motor viejo de Musculación/
+    // Gimnasia pero nunca conectados al motor de CrossFit. Solo en sesiones de 45'+
+    // (en 30' ya está todo el tiempo comprometido). La categoría se elige según el
+    // patrón del día (ej. día de empuje → salud de hombro), rotando entre las 3
+    // relevantes por semana/día para variedad; 'skill' no tiene entrada propia en
+    // DAY_SKILL_POOLS (nunca existió ahí) así que usa un set genérico razonable.
+    if(opts.duration !== '30'){
+      const catsAccesorioPorPattern = {
+        squat: DAY_SKILL_POOLS.squat, hinge: DAY_SKILL_POOLS.hinge,
+        push: DAY_SKILL_POOLS.push_vertical, pull: DAY_SKILL_POOLS.pull_vertical,
+        olympic: DAY_SKILL_POOLS.olympic_main, skill: ['core','midline','shoulder'],
+      };
+      const catsAccesorio = catsAccesorioPorPattern[dayPattern] || ['core','midline','unilateral'];
+      const catAccesorio = _pick(catsAccesorio, wi + (ti||0));
+      const movAccesorio = _pickDedup(SKILL_POOLS[catAccesorio], wi, ti + 199 + regenSeedDia*19, opts, 'accesorio_'+catAccesorio);
+      movsFuerza.push(movAccesorio);
+      lineasFuerza.push(movAccesorio);
+    }
+
     // Metcon: GENERATE → VALIDATE → REPAIR → DELIVER, con interferencia gradual —
     // SIN CAMBIOS respecto a antes de esta fase (regla aprobada: la selección de
     // movimientos es independiente del formato).
