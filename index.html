@@ -1445,7 +1445,11 @@ async function saveBody(){
   const hasData = Object.keys(BODY_METRICS).some(k=>jsVals[k]!==null);
   if(!hasData) return;
   Object.keys(BODY_METRICS).forEach(k=>{ row[BODY_METRICS[k].col] = jsVals[k]; });
-  const { error } = await sb.from('body_entries').insert(row);
+  const { data: existing } = await sb.from('body_entries').select('id')
+    .eq('user_id', currentUser.id).eq('entry_date', date).maybeSingle();
+  const { error } = existing
+    ? await sb.from('body_entries').update(row).eq('id', existing.id)
+    : await sb.from('body_entries').insert(row);
   if(error){ alert('Error al guardar: '+error.message); return; }
   ['bodyWeight','bodyPGC','bodySMM','bodyFatMass','bodyBMI','bodyVisceral','bodyWater','bodyBMR'].forEach(id=>document.getElementById(id).value='');
   await renderBodyList();
@@ -1524,9 +1528,14 @@ function renderSkillsSliders(){
 }
 
 async function saveSkills(){
-  const entry = { user_id: currentUser.id, entry_date: new Date().toISOString().slice(0,10) };
+  const date = new Date().toISOString().slice(0,10);
+  const entry = { user_id: currentUser.id, entry_date: date };
   SKILLS_LIST.forEach(s=>{ entry[s.key] = parseInt(document.getElementById(`rng_${s.key}`).value); });
-  const { error } = await sb.from('skills_entries').insert(entry);
+  const { data: existing } = await sb.from('skills_entries').select('id')
+    .eq('user_id', currentUser.id).eq('entry_date', date).maybeSingle();
+  const { error } = existing
+    ? await sb.from('skills_entries').update(entry).eq('id', existing.id)
+    : await sb.from('skills_entries').insert(entry);
   if(error){ alert('Error al guardar: '+error.message); return; }
   await refreshSkillsHistory();
   populateSkillsDates();
