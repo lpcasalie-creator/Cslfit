@@ -2835,13 +2835,15 @@ GENERATORS.general = [
 // Pedido de Luis: squat/hinge/push/pull deben tener más frecuencia que Olímpico/
 // Skill (más específicos/técnicos, no necesitan tanta repetición como los básicos).
 // Se duplican esos 4 patrones en el arreglo — mismo mecanismo _pick(pool, wi+ti)
-// de siempre, sin tocar la lógica de rotación — dando 2/10 a cada básico y 1/10 a
-// Olímpico/Skill. El orden de esta lista NO es arbitrario: se buscó por fuerza
-// bruta (200k arreglos aleatorios) uno con CERO repeticiones de patrón en días
-// consecutivos para 3, 4 y 5 días/semana (los únicos valores que ofrece la UI),
-// probado hasta 20 semanas seguidas — no cualquier orden de este mismo multiset
-// cumple eso.
-const CROSSFIT_PATTERN_ROTATION = ['olympic','push','hinge','pull','squat','skill','push','hinge','pull','squat'];
+// de siempre, sin tocar la lógica de rotación — dando 2/11 a cada básico y 1/11 a
+// Olímpico/Skill/Monoestructural. 'monostructural' es el día de motor aeróbico
+// dedicado (Fase comparación-programación-real): antes el cardio solo vivía como
+// UN movimiento dentro de un metcon mixto, nunca como el foco completo del día.
+// El orden de esta lista NO es arbitrario: se buscó por fuerza bruta (300k
+// arreglos aleatorios) uno con CERO repeticiones de patrón en días consecutivos
+// para 3, 4 y 5 días/semana (los únicos valores que ofrece la UI), probado hasta
+// 25 semanas seguidas — no cualquier orden de este mismo multiset cumple eso.
+const CROSSFIT_PATTERN_ROTATION = ['skill','squat','olympic','pull','push','hinge','squat','monostructural','pull','hinge','push'];
 
 // Interferencia por patrón del día, en 3 niveles. 'alto' se excluye de los
 // candidatos del WOD; 'medio' se incluye pero con menor peso (menos repeticiones
@@ -2864,6 +2866,11 @@ const CROSSFIT_STRENGTH_SOURCE = {
   pull:    { pool:'gimnasia', key:'pull' },
   olympic: { pool:'fuerza',   key:'olympic_main' },
   skill:   { pool:'gimnasia', key:'skill' },
+  // 'monostructural' no tiene fuerza nativa propia (el foco del día es el motor
+  // aeróbico, no un levantamiento) — reusa 'squat' solo como fuente para el único
+  // valor que consulta src.pool/src.key fuera de la rama "agregado" (el test de
+  // la última semana, si le toca caer justo un día de motor).
+  monostructural: { pool:'fuerza', key:'squat' },
 };
 
 // Fase CrossFit 7 (A2): defensa LOCAL — sólo para las claves de Gimnasia ('pull','skill')
@@ -4638,6 +4645,28 @@ function _crossfitSaturdayLargo(wi, opts){
   return { piezas, nPiezas, descansoMin: CROSSFIT_SATURDAY_DESCANSO_MIN, totalMinutos };
 }
 
+/* ---------------- Día de motor aeróbico (monoestructural) ----------------
+   Comparación contra programación real de CrossFit: el cardio solo vivía
+   embebido en el metcon mixto, nunca como foco completo de un día. Reemplaza
+   el metcon habitual (multi-movimiento) por UNA pieza monoestructural sola —
+   continua o por intervalos — en vez de forzarlo dentro del pipeline de
+   _crossfitBuildMetcon/_crossfitBuildWodTexto, que asume varios movimientos. */
+const CROSSFIT_MONO_MODALIDADES = ['Row','Run','Bike Erg','Ski Erg'];
+function _crossfitMonoWod(wi, ti, opts, domain, regenSeed, durMinutos){
+  // durMinutos ya viene calculado por el mismo pipeline que usa cualquier otro
+  // día (_domainBaseCap + _scaleCap + descuento por movimientos extra de Fuerza/
+  // Skills) — respeta la duración de sesión que eligió el coach, igual que el
+  // resto de los formatos.
+  const modalidad = _pick(CROSSFIT_MONO_MODALIDADES, wi + (ti||0) + (regenSeed||0)*7);
+  const esIntervalo = _pick(['steady','interval'], wi*3 + (ti||0) + (regenSeed||0)*11) === 'interval';
+  if(esIntervalo){
+    const nSeries = domain==='largo' ? 6 : domain==='medio' ? 5 : 4;
+    const minSerie = Math.max(2, Math.round(durMinutos / nSeries / 1.4));
+    return { wodTexto: `Intervalos ${modalidad} — ${nSeries} series de ${minSerie}' @ esfuerzo alto (zona 4-5), descanso ${minSerie}' entre series`, estructuraLabel: 'Intervalos' };
+  }
+  return { wodTexto: `${modalidad} ${durMinutos}' continuo — ritmo sostenido (zona 2-3, conversacional)`, estructuraLabel: 'Steady State' };
+}
+
 function _crossfitDay(offset){
   return function(wi, isTest, opts, ti){
     // Ajuste 1 (Fase CrossFit 1): el patrón del día sigue rotando según semana+día,
@@ -4658,6 +4687,22 @@ function _crossfitDay(offset){
 
     if(isTest){
       const regenSeedTest = opts._regenSeed || 0;
+      if(dayPattern === 'monostructural'){
+        // Test propio para día de motor — el fallback genérico (test de sentadilla)
+        // no tiene sentido si el patrón del día es aeróbico.
+        const modalidad = _pick(CROSSFIT_MONO_MODALIDADES, wi + (ti||0) + regenSeedTest*7);
+        const distancia = domain==='largo' ? '5000m' : domain==='medio' ? '2000m' : '1000m';
+        const lF = `Test: ${distancia} ${modalidad} — mejor tiempo (comparar con semana 1)`;
+        const outT = { _pattern: dayPattern, _domain: domain };
+        outT._session = _buildSession(outT, {
+          wi, ti, isTest:true, opts, focus:'crossfit', pattern:dayPattern, domain,
+          strMovements:[ mkMovement({name:`${distancia} ${modalidad}`, pattern:dayPattern, notes:'Test aeróbico', raw:lF}) ],
+          wodMovements:[ mkMovement({name:'Test aeróbico de referencia', pattern:'monostructural',
+            raw:`Test: ${distancia} ${modalidad} — mejor tiempo posible (repetir semana 1, comparar)`}) ],
+          strType:'strength',
+        });
+        return outT;
+      }
       const pool = GEN_POOLS[src.pool][src.key][opts.equipment];
       const ref = _pickSafe(pool, 0, opts, src.key, ti + regenSeedTest*19);
       const lF = `Test: ${ref} — máximo esfuerzo técnico (comparar con semana 1)`;
@@ -4690,10 +4735,24 @@ function _crossfitDay(offset){
     const pool = GEN_POOLS[src.pool][src.key][opts.equipment];
     const conteoDuracion = CROSSFIT_CONTEO_POR_DURACION[opts.duration] || CROSSFIT_CONTEO_POR_DURACION['60'];
     const esDiaSkillPre = dayPattern === 'skill';
+    const esDiaMono = dayPattern === 'monostructural';
     const movsFuerza = [], lineasFuerza = [];
     const movsSkill = [], lineasSkill = [];
 
-    if(esDiaSkillPre){
+    if(esDiaMono){
+      // Día de motor aeróbico: Fuerza y Skill quedan livianos ("agregado" nada más,
+      // igual criterio que ya usan las otras ramas) — el foco real de la sesión es
+      // el WOD monoestructural que se arma más abajo, no el levantamiento del día.
+      const poolFuerzaAgregada = GEN_POOLS.fuerza.squat[opts.equipment];
+      const movFuerzaAgregada = _crossfit17a2Pick(poolFuerzaAgregada, wi, ti + 99 + regenSeedDia*19, opts, 'squat');
+      movsFuerza.push(movFuerzaAgregada);
+      lineasFuerza.push(_crossfit17a2PrescribirRectas(movFuerzaAgregada, opts, wi, '5-6'));
+
+      const poolSkillAgregado = _crossfitSkillPoolAmplio(opts);
+      const movSkillAgregado = _crossfit17a2Pick(poolSkillAgregado, wi, ti + 99 + regenSeedDia*19, opts, 'skill');
+      movsSkill.push(movSkillAgregado);
+      lineasSkill.push(_crossfit17a2PrescribirSkill(movSkillAgregado, opts));
+    } else if(esDiaSkillPre){
       // Nativo: Skills, escalado por duración, evitando repetir familia cuando son 2.
       // Fase 18 (Fix 5): pool amplio en vez de GEN_POOLS.gimnasia.skill[equipment]
       // (ver comentario junto a _crossfitSkillPoolAmplio) — 17 candidatos reales
@@ -4756,14 +4815,17 @@ function _crossfitDay(offset){
 
     // Metcon: GENERATE → VALIDATE → REPAIR → DELIVER, con interferencia gradual —
     // SIN CAMBIOS respecto a antes de esta fase (regla aprobada: la selección de
-    // movimientos es independiente del formato).
-    const elegidos = _crossfitBuildMetcon(dayPattern, nSlots, wi, ti, opts, domain);
+    // movimientos es independiente del formato). En día de motor no aplica: el
+    // "metcon" es UNA pieza monoestructural, no varios movimientos combinados.
+    const elegidos = esDiaMono ? [] : _crossfitBuildMetcon(dayPattern, nSlots, wi, ti, opts, domain);
     // Fase 17A.2: compensar el tiempo real que agregan los componentes extra de
     // Fuerza/Skills (antes de esta fase siempre había exactamente 1 solo
     // componente por día) — se acorta el WOD proporcionalmente, para que la
     // sesión total siga cuadrando con la duración que el coach eligió, en vez de
     // alargarse silenciosamente. ~4.5min estimados por movimiento extra (aprobado
-    // por el coach, validado por simulación antes de esta línea).
+    // por el coach, validado por simulación antes de esta línea). Mismo cálculo
+    // para día de motor: la duración de la pieza monoestructural respeta el
+    // mismo presupuesto de tiempo que cualquier otro formato.
     const movimientosExtra17a2 = Math.max(0, (movsFuerza.length + movsSkill.length) - 1);
     const capBase = _scaleCap(_domainBaseCap(domain, wi), opts);
     const cap = Math.max(5, capBase - Math.round(movimientosExtra17a2 * 4.5));
@@ -4774,7 +4836,9 @@ function _crossfitDay(offset){
       // es exactamente el mismo bloque que vivía acá adentro, solo que ahora es
       // una función aparte que recibe los mismos parámetros que ya se calculaban
       // en este punto.
-    const { wodTexto, estructuraLabel } = _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domain, cap, regenSeedWod);
+    const { wodTexto, estructuraLabel } = esDiaMono
+      ? _crossfitMonoWod(wi, ti, opts, domain, regenSeedWod, cap)
+      : _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domain, cap, regenSeedWod);
 
     // Fase 17A/17A.2: Fuerza y Skills conviven siempre como bloques separados y
     // reales (type/legacyField propios) — ya no es fuerza XOR skill según patrón
@@ -4788,14 +4852,17 @@ function _crossfitDay(offset){
       // Un único mkMovement con el WOD completo ya armado — mismo patrón que usan
       // Fuerza/Musculación/Gimnasia (raw = bloque de texto, no una línea por movimiento).
       // Los movimientos elegidos y su nivel de interferencia quedan documentados en notes.
-      wodMovements:[ mkMovement({
-        name: wodFormat + ': ' + elegidos.map(e=>e.name).join(' + '),
-        pattern: 'metcon',
-        notes: elegidos.map(e => `${e.name} (${e.pattern}, interferencia ${
-          (CROSSFIT_INTERFERENCE[dayPattern]?.alto||[]).includes(e.pattern) ? 'ALTA — no debería ocurrir' :
-          (CROSSFIT_INTERFERENCE[dayPattern]?.medio||[]).includes(e.pattern) ? 'media' : 'compatible'})`).join(' · '),
-        raw: wodTexto,
-      }) ],
+      wodMovements:[ esDiaMono
+        ? mkMovement({ name: estructuraLabel, pattern:'monostructural', raw: wodTexto })
+        : mkMovement({
+            name: wodFormat + ': ' + elegidos.map(e=>e.name).join(' + '),
+            pattern: 'metcon',
+            notes: elegidos.map(e => `${e.name} (${e.pattern}, interferencia ${
+              (CROSSFIT_INTERFERENCE[dayPattern]?.alto||[]).includes(e.pattern) ? 'ALTA — no debería ocurrir' :
+              (CROSSFIT_INTERFERENCE[dayPattern]?.medio||[]).includes(e.pattern) ? 'media' : 'compatible'})`).join(' · '),
+            raw: wodTexto,
+          })
+      ],
       strType:'strength',
     });
     return out;
