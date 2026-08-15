@@ -3146,7 +3146,7 @@ function _crossfitPrescribe(name, wi, ti, level, domain){
   if(type === 'TIME'){
     const rangos = { BEGINNER:[10,15], INTERMEDIATE:[15,25], ADVANCED:[20,40] };
     const [low,high] = rangos[diff];
-    const val = _crossfitRangeValue(low, high, wi+ti);
+    const val = _crossfitRangeValue(low, high, _movIdx(wi, ti));
     return `${val}s ${name}`;
   }
 
@@ -3163,7 +3163,7 @@ function _crossfitPrescribe(name, wi, ti, level, domain){
     const factor = domain==='largo' ? [0.6,1] : domain==='medio' ? [0.35,0.7] : [0,0.4];
     const low = Math.round(lowBase + (highBase-lowBase)*factor[0]);
     const high = Math.round(lowBase + (highBase-lowBase)*factor[1]);
-    let val = _crossfitRangeValue(low, high, wi+ti);
+    let val = _crossfitRangeValue(low, high, _movIdx(wi, ti));
     val = esHSW ? Math.round(val) : Math.round(val/5)*5; // HSW no redondea a múltiplos de 5 — rango ya es chico
     return `${val}m ${name}`;
   }
@@ -3171,7 +3171,7 @@ function _crossfitPrescribe(name, wi, ti, level, domain){
   if(type === 'MIXED'){
     const rangos = { corto:[8,12], medio:[14,20], largo:[20,30] };
     const [low,high] = rangos[domain] || rangos.corto;
-    const val = _crossfitRangeValue(low, high, wi+ti);
+    const val = _crossfitRangeValue(low, high, _movIdx(wi, ti));
     return `${val} Cal ${name}`;
   }
 
@@ -3184,7 +3184,7 @@ function _crossfitPrescribe(name, wi, ti, level, domain){
   // criterio que ADVANCED: es calidad técnica, no progresión de volumen.
   if(type === 'REPS' && _crossfitIsSkillPrescription(name)){
     const [low, high] = CROSSFIT_SKILL_REPS_BY_LEVEL[level] || CROSSFIT_SKILL_REPS_BY_LEVEL.principiante;
-    const val = _capReps(name, _crossfitRangeValue(low, high, wi+ti));
+    const val = _capReps(name, _crossfitRangeValue(low, high, _movIdx(wi, ti)));
     return `${val} ${name}`;
   }
 
@@ -3198,7 +3198,7 @@ function _crossfitPrescribe(name, wi, ti, level, domain){
   // igual criterio que ya usa el resto del sistema (repsBase actual).
   let val;
   if(diff==='ADVANCED'){
-    val = _crossfitRangeValue(low, high, wi+ti); // varía, no progresa
+    val = _crossfitRangeValue(low, high, _movIdx(wi, ti)); // varía, no progresa
   } else {
     const paso = (high-low)/3;
     val = Math.round(low + Math.min(wi,3)*paso);
@@ -4022,7 +4022,7 @@ function _crossfitVolumeBasedPrescribe(name, wi, ti, level, domain, totalTarget,
   // vía — ej. Power Clean + Push Jerk — ya salieron en la condición de arriba).
   if(esChipper && _crossfitIsCompoundMovement(name) && type === 'REPS'){
     const [low, high] = CROSSFIT_COMPOUND_REPS_BY_LEVEL[level] || CROSSFIT_COMPOUND_REPS_BY_LEVEL.principiante;
-    const val = _capReps(name, _crossfitRangeValue(low, high, wi+ti));
+    const val = _capReps(name, _crossfitRangeValue(low, high, _movIdx(wi, ti)));
     return `${val} ${name}`;
   }
   const valorBase = Math.round(totalTarget / Math.max(1, divisor));
@@ -4240,7 +4240,14 @@ function _crossfitGenerateDayWithContinuity(templateFn, wi, ti, opts, prevWodSig
     return dBaseline;
   }
 
-  const fuerzaBaseline = dBaseline._session.blocks.find(b=>b.type==='strength').movements[0];
+  const strengthBlockBaseline = dBaseline._session.blocks.find(b=>b.type==='strength');
+  const fuerzaBaseline = strengthBlockBaseline && strengthBlockBaseline.movements && strengthBlockBaseline.movements[0];
+  if(!fuerzaBaseline){
+    // Sin bloque de fuerza no podemos hacer el tracking de _used que depende de
+    // fuerzaBaseline.name más abajo — caemos al mismo camino que "sin firmas previas".
+    opts._used = optsBaseline._used;
+    return dBaseline;
+  }
   const candidatos = [];
   for(let seed=0; seed<CROSSFIT_16C_K; seed++){
     const optsCand = Object.assign({}, opts, { _regenSeed: seed, _used: new Set(usedAntes) });
@@ -4518,7 +4525,7 @@ function _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domai
 
   if(wodFormat === 'AMRAP'){
     const wodLines = elegidos.map((e,i)=> _crossfitPrescribe(e.name, wi, ti+i+regenSeedWod*5, opts.level, domain));
-    estructuraLabel = nSlots===3 ? 'Triplet' : 'Couplet';
+    estructuraLabel = elegidos.length===3 ? 'Triplet' : 'Couplet';
     wodTexto = `AMRAP ${cap}' (${estructuraLabel} CrossFit):\n${wodLines.join('\n')}`;
 
   } else if(wodFormat === 'For Time' || wodFormat === 'Single' || wodFormat === 'For Time 4'){
@@ -4527,13 +4534,13 @@ function _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domai
     const repsPerMovementTotal = Math.round(total / Math.max(1, elegidos.length));
     const wodLines = elegidos.map((e,i)=>
       _crossfitVolumeBasedPrescribe(e.name, wi, ti+i+regenSeedWod*5, opts.level, domain, repsPerMovementTotal, rounds, false));
-    estructuraLabel = nSlots===1 ? 'Single' : nSlots===4 ? 'Quadruplet' : nSlots===3 ? 'Triplet' : 'Couplet';
+    estructuraLabel = elegidos.length===1 ? 'Single' : elegidos.length===4 ? 'Quadruplet' : elegidos.length===3 ? 'Triplet' : 'Couplet';
     wodTexto = `${rounds} rondas For Time (cap ${cap}') (${estructuraLabel} CrossFit):\n${wodLines.join('\n')}`;
 
   } else if(wodFormat === 'EMOM'){
     const capRedondeado = Math.max(nSlots, Math.round(cap / nSlots) * nSlots);
     const wodLines = elegidos.map((e,i)=> _crossfitPrescribe(e.name, wi, ti+i+regenSeedWod*5, opts.level, domain));
-    wodTexto = `EMOM ${capRedondeado}' — ${nSlots} estaciones (rotando):\n${wodLines.join('\n')}`;
+    wodTexto = `EMOM ${capRedondeado}' — ${elegidos.length} estaciones (rotando):\n${wodLines.join('\n')}`;
 
   } else { // Chipper
     const total = CROSSFIT_TOTAL_VOLUME_TARGET[opts.level]['largo'];
