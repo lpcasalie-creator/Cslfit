@@ -864,6 +864,10 @@
 </nav>
 
 <script>
+function escapeHtml(str){
+  return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 /* ---------------- NAV ---------------- */
 // ================= Fase UX-01 — Paso 1 (revisado): 6 pestañas =================
 // Home y Movimientos son directas (sin submenú); WOD/RM/Scores/Programación
@@ -1347,7 +1351,8 @@ async function setPctValue(name, field, val){
   // peso, pasa directo.
   _pctDataCache[name][field] = (field==='pr') ? weightInputToKg(val) : val;
   renderPctTable();
-  await sb.from('pct_data').upsert({ user_id: currentUser.id, data: _pctDataCache, updated_at: new Date().toISOString() });
+  const { error } = await sb.from('pct_data').upsert({ user_id: currentUser.id, data: _pctDataCache, updated_at: new Date().toISOString() });
+  if(error){ console.error('setPctValue failed', error); alert('No se pudo guardar: ' + error.message); }
 }
 async function resetPctTable(){
   _pctDataCache = {};
@@ -7053,7 +7058,7 @@ async function renderScores(){
   const catLabel = {girls:'Girls', hero:'Hero', custom:''};
   document.getElementById('scoreList').innerHTML = scores.map((s)=>{
     const isPR = prIds.has(s.id);
-    return `<div class="score-item"><span>${s.name}${catLabel[s.category]?` <span class="muted">(${catLabel[s.category]})</span>`:''} — <b>${s.result}</b> ${isPR?'🏆':''} <span class="muted">(${s.entry_date})</span></span><span class="del" onclick="delScore('${s.id}')">Borrar</span></div>`;
+    return `<div class="score-item"><span>${escapeHtml(s.name)}${catLabel[s.category]?` <span class="muted">(${catLabel[s.category]})</span>`:''} — <b>${escapeHtml(s.result)}</b> ${isPR?'🏆':''} <span class="muted">(${s.entry_date})</span></span><span class="del" onclick="delScore('${s.id}')">Borrar</span></div>`;
   }).join('');
 }
 async function delScore(id){
@@ -7117,12 +7122,18 @@ async function signUpWithCode(){
   const { data, error } = await sb.auth.signUp({ email, password });
   if(error){ msg.style.color='#ff8c8c'; msg.textContent = 'Error: ' + error.message; return; }
 
+  let consumeFailed = false;
   if(data.user){
-    await sb.rpc('consume_invite_code', { p_code: code, p_user: data.user.id });
+    const { error: consumeError } = await sb.rpc('consume_invite_code', { p_code: code, p_user: data.user.id });
+    if(consumeError){ consumeFailed = true; console.error('consume_invite_code failed', consumeError); }
   }
 
   if(data.session){
+    if(consumeFailed) alert('Tu cuenta se creó, pero no se pudo vincular al código de invitación. Contacta a tu coach para que te asigne manualmente.');
     onLoggedIn(data.session.user);
+  } else if(consumeFailed){
+    msg.style.color = '#ff8c8c';
+    msg.textContent = '✓ Cuenta creada, pero hubo un problema al vincular tu código — contacta a tu coach. Revisa tu correo para confirmar antes de entrar.';
   } else {
     msg.style.color = '#8fd694';
     msg.textContent = '✓ Cuenta creada. Revisa tu correo para confirmar antes de entrar.';
@@ -7177,7 +7188,7 @@ function applyBranding(bp){
   if(homeBrandTagline) homeBrandTagline.textContent = [handle, tagline].filter(Boolean).join(' · ');
 
   const footer = document.getElementById('appFooter');
-  if(footer) footer.innerHTML = `${handle ? handle+' · ' : ''}<span>${name}</span>${creds?' · '+creds:''} · <span id="appVersionTag">${APP_VERSION}</span>`;
+  if(footer) footer.innerHTML = `${handle ? escapeHtml(handle)+' · ' : ''}<span>${escapeHtml(name)}</span>${creds?' · '+escapeHtml(creds):''} · <span id="appVersionTag">${APP_VERSION}</span>`;
 
   document.title = `${name}${coachName ? ' | '+coachName : ''}`;
 }
