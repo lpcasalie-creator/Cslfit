@@ -117,7 +117,10 @@
   .timer-display{
     font-family:'Barlow Condensed',sans-serif; font-size:64px; font-weight:800;
     text-align:center; color:var(--lime); letter-spacing:1px; margin:14px 0;
+    transition:color .2s;
   }
+  .timer-display.timer-finished{ color:var(--danger); animation:timerPulse 1s ease-in-out 3; }
+  @keyframes timerPulse{ 0%,100%{opacity:1;} 50%{opacity:.3;} }
   .timer-controls{display:flex; gap:8px;}
   .timer-controls .btn{margin-top:0;}
 
@@ -970,6 +973,20 @@ function fmt(s){
   const m = Math.floor(Math.abs(s)/60), sec = Math.abs(s)%60;
   return (s<0?'-':'')+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');
 }
+function timerAlert(){
+  if(navigator.vibrate) navigator.vibrate([200,100,200,100,400]);
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [0,0.3,0.6].forEach(t=>{
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.2, ctx.currentTime+t);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+t+0.25);
+      osc.start(ctx.currentTime+t); osc.stop(ctx.currentTime+t+0.25);
+    });
+  }catch(e){ /* audio no disponible */ }
+}
 function startTimer(){
   if(timerRunning) return;
   const mode = document.getElementById('timerMode').value;
@@ -977,15 +994,21 @@ function startTimer(){
   timerSeconds = mode==='amrap' || mode==='emom' ? mins*60 : 0;
   const countingDown = mode!=='fortime';
   timerRunning = true;
+  document.getElementById('timerDisplay').classList.remove('timer-finished');
   timerInterval = setInterval(()=>{
     timerSeconds += countingDown ? -1 : 1;
     document.getElementById('timerDisplay').textContent = fmt(timerSeconds);
-    if(countingDown && timerSeconds<=0){ clearInterval(timerInterval); timerRunning=false; }
+    if(countingDown && timerSeconds<=0){
+      clearInterval(timerInterval); timerRunning=false;
+      document.getElementById('timerDisplay').classList.add('timer-finished');
+      timerAlert();
+    }
   },1000);
 }
 function resetTimer(){
   clearInterval(timerInterval); timerRunning=false; timerSeconds=0;
-  document.getElementById('timerDisplay').textContent='00:00';
+  const el = document.getElementById('timerDisplay');
+  el.textContent='00:00'; el.classList.remove('timer-finished');
 }
 renderTimerInputs();
 
