@@ -5895,7 +5895,7 @@ async function renderInviteCodesList(){
   }).join('');
 }
 async function deleteInviteCode(code){
-  await sb.from('invite_codes').delete().eq('code', code);
+  await sb.from('invite_codes').delete().eq('code', code).eq('created_by', currentUser.id);
   await renderInviteCodesList();
 }
 
@@ -5935,7 +5935,10 @@ async function getLastActivityMap(athleteIds){
 async function renderAthletesList(){
   const el = document.getElementById('athletesList');
   const { data: athletes, error: e1 } = await sb.from('profiles').select('*').eq('role','athlete').eq('coach_id', currentUser.id);
-  const { data: assigns, error: e2 } = await sb.from('assignments').select('id, athlete_id, program_id, start_date, programs(name, weeks)');
+  const athleteIds = (athletes||[]).map(a=>a.id);
+  const { data: assigns, error: e2 } = athleteIds.length
+    ? await sb.from('assignments').select('id, athlete_id, program_id, start_date, programs(name, weeks)').in('athlete_id', athleteIds)
+    : { data: [], error: null };
   const { data: myPrograms, error: e3 } = await sb.from('programs').select('id,name').eq('coach_id', currentUser.id).order('name');
   _coachProgramsCache = myPrograms || [];
   if(e1 || e2 || e3){
