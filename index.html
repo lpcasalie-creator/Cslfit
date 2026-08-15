@@ -1939,6 +1939,24 @@ function _scaleForBeginner(mov, wi, level, patternKey){
   return mov;
 }
 
+// Progresión de %1RM para los levantamientos de Fuerza — pedido de Luis: prefiere
+// porcentaje de 1RM en vez de rango de reps + RPE (sin calcular el kilo real, eso
+// lo resuelve el atleta con su propio máximo, igual que hoy la tabla %BS). Misma
+// filosofía que _rpe(): sube con la semana, techo por nivel, se ajusta con feedback.
+const PCT_1RM_CAPS = { principiante:75, intermedio:85, avanzado:90 };
+const PCT_1RM_FEEDBACK_ADJUST = { primera_vez:0, facil:5, adecuado:0, dificil:-5 };
+function _pct1RM(wi, level, feedback){
+  const cap = PCT_1RM_CAPS[level] || 85;
+  const adj = PCT_1RM_FEEDBACK_ADJUST[feedback] || 0;
+  return Math.min(Math.max(65 + wi*3 + adj, 60), Math.min(cap + adj, 92));
+}
+function _repsForPct(pct){
+  if(pct >= 85) return 2;
+  if(pct >= 80) return 3;
+  if(pct >= 70) return 4;
+  return 5;
+}
+
 const RPE_CAPS = { principiante:7, intermedio:9, avanzado:10 };
 const FEEDBACK_ADJUST = { primera_vez:0, facil:1, adecuado:0, dificil:-1 };
 function _rpe(wi, level, feedback){
@@ -4460,8 +4478,9 @@ function _crossfit17a2PrescribirOlimpicoNativo(mov, opts, wi){
 }
 function _crossfit17a2PrescribirRectas(mov, opts, wi, repsRango){
   if(/\d+\s*x\s*\d+/i.test(mov)) return mov; // ya trae prescripción embebida (bug preexistente, no se toca)
-  const rpe = Math.min(_rpe(wi, opts.level, opts.priorFeedback), 9);
-  return `${mov} ${_lvlSets(3,opts.level)}x${repsRango} (RPE ${rpe})`;
+  const pct = _pct1RM(wi, opts.level, opts.priorFeedback);
+  const reps = _repsForPct(pct);
+  return `${mov} ${_lvlSets(3,opts.level)}x${reps} @ ${pct}%`;
 }
 // Fase 18 (Fix 10): tabla de progresión por Skill — componentes de preparación
 // ANTES del movimiento objetivo (activación de hombro/agarre, drill específico),
