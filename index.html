@@ -162,6 +162,30 @@
     font-weight:800; padding:2px 7px; border-radius:20px; margin-left:6px;
     font-family:'Barlow Condensed',sans-serif; letter-spacing:0.5px;
   }
+  /* ---------------- Home dashboard (progreso) ---------------- */
+  .progress-hero{ background:var(--card); border:1px solid var(--border); border-top:2px solid var(--lime); border-radius:10px; padding:16px; margin-bottom:12px; }
+  .progress-hero .ph-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .progress-hero .ph-mv{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:13px; letter-spacing:.04em; color:var(--gray); text-transform:uppercase; }
+  .progress-hero .ph-delta{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:11px; color:#0d0d0d; background:var(--lime); padding:2px 8px; border-radius:20px; white-space:nowrap; }
+  .progress-hero .ph-num{ font-family:'Barlow Condensed',sans-serif; font-weight:800; font-size:36px; line-height:1; margin-top:6px; }
+  .progress-hero .ph-num span{ font-size:16px; color:var(--gray-dim); font-weight:500; }
+  .progress-hero .ph-cap{ font-size:11px; color:var(--gray-dim); margin-top:8px; }
+  .stat-row2{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+  .stat-tile{ background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:10px 4px; text-align:center; }
+  .stat-tile .n{ font-family:'Barlow Condensed',sans-serif; font-weight:800; font-size:20px; color:var(--lime); }
+  .stat-tile .l{ font-size:9px; letter-spacing:.05em; text-transform:uppercase; color:var(--gray-dim); margin-top:2px; }
+  .rec-row{ display:flex; justify-content:space-between; font-size:12.5px; padding:7px 0; border-bottom:1px solid var(--border); }
+  .rec-row:last-child{ border-bottom:none; }
+  .rec-row b{ font-weight:600; }
+  .rec-row .v{ color:var(--gray-dim); font-variant-numeric:tabular-nums; }
+  .rec-row .pr{ color:var(--lime); font-size:10px; margin-left:4px; }
+  .sesh-compact-row{ display:flex; justify-content:space-between; font-size:12.5px; padding:6px 0; border-bottom:1px solid var(--border); color:var(--gray); }
+  .sesh-compact-row:last-child{ border-bottom:none; }
+  .sesh-compact-row b{ color:var(--white); font-weight:600; }
+  .onboard-card{ text-align:center; padding:22px 14px; border:1px dashed var(--border); border-radius:10px; }
+  .onboard-card h3{ margin-top:8px; }
+  .onboard-card p{ font-size:12.5px; color:var(--gray-dim); margin-top:6px; line-height:1.5; }
+
   .skill-row{margin-bottom:14px;}
   .skill-row .skill-head{display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px;}
   .skill-row .skill-val{color:var(--lime); font-weight:700;}
@@ -271,6 +295,22 @@
       <p class="muted" id="homeMotivational" style="margin-top:2px;"></p>
       <p class="muted" id="homeDate" style="margin-top:8px;"></p>
     </div>
+
+    <div class="card" id="homeOnboardCard" style="display:none;"></div>
+
+    <div class="card" id="homeDashboardCard" style="display:none;">
+      <div id="homeProgressHero"></div>
+      <div class="stat-row2" id="homeStatRow"></div>
+      <button class="btn small" style="width:100%;" onclick="showView('scores')">+ Registrar resultado de hoy</button>
+      <h3 style="margin-top:16px;">Récords recientes</h3>
+      <div id="homeRecords"></div>
+    </div>
+
+    <div class="card" id="homeSessionCard" style="display:none;">
+      <h3>Sesión de hoy</h3>
+      <div id="homeSessionCompact"></div>
+    </div>
+
     <div class="card">
       <h3>Accesos rápidos</h3>
       <div class="grid2">
@@ -969,6 +1009,7 @@ function showView(id){
   if(id==='mov') renderMov();
   if(id==='scores'){ renderBenchmarkSelect(); renderScores().then(populateScoreChartMovements); }
   if(id==='analysis'){ renderBarAnalysisList(); }
+  if(id==='home'){ renderHomeGreeting(); renderHomeDashboard(); renderHomeSessionCompact(); }
 }
 
 document.getElementById('homeDate').textContent = new Date().toLocaleDateString('es-CL',{weekday:'long', day:'numeric', month:'long'});
@@ -1027,6 +1068,174 @@ function renderHomeGreeting(){
   const frase = HOME_FRASES[dayOfYear % HOME_FRASES.length];
   const fraseEl = document.getElementById('homeMotivational');
   if(fraseEl) fraseEl.textContent = frase;
+}
+
+/* ---------------- Home: dashboard de progreso ----------------
+   Pedido de Luis: "vender" el registro de datos, no el WOD — lo primero
+   que se ve al abrir la app es la evolución real del atleta (1RM, %BS,
+   benchmarks Girls/Hero, marcas de gimnasia/monoestructural), no la
+   sesión del día. Combina rm_entries + scores porque un "récord" no es
+   solo un peso de barra. Sesión de hoy sigue existiendo, pero compacta
+   y más abajo. */
+function renderProgressHero(heroPick, rmHistoryFor, scoreHistoryFor){
+  const el = document.getElementById('homeProgressHero');
+  if(!heroPick){ el.innerHTML = ''; return; }
+
+  let displayVal = escapeHtml(heroPick.display);
+  let deltaHtml = '';
+  let sparkHtml = '';
+  let capText = heroPick.isPR ? 'Récord personal' : 'Última marca registrada';
+
+  if(heroPick.kind === 'rm'){
+    const history = rmHistoryFor(heroPick.name); // [{date, val}] ascendente
+    if(history.length >= 2){
+      const first = history[0].val, last = history[history.length-1].val;
+      const deltaKg = last - first;
+      const sign = deltaKg >= 0 ? '+' : '-';
+      deltaHtml = `<div class="ph-delta">${sign}${fmtWeight(Math.abs(deltaKg))}</div>`;
+      capText = `Últimas ${history.length} mediciones · ${heroPick.isPR?'récord hoy':'sin cambio de récord'}`;
+      sparkHtml = `<canvas id="homeHeroSpark" width="260" height="46" style="width:100%; max-width:100%; margin-top:8px;"></canvas>`;
+    }
+  } else if(heroPick.kind === 'score' && heroPick.numeric !== null){
+    const history = scoreHistoryFor(heroPick.name); // [{date, val}] ascendente, val ya en la unidad comparable
+    if(history.length >= 2){
+      const first = history[0].val, last = history[history.length-1].val;
+      const deltaVal = last - first; // negativo = más rápido/menos si es tiempo
+      const mejorando = heroPick.scoreType === 'time' ? deltaVal < 0 : deltaVal > 0;
+      const sign = mejorando ? (heroPick.scoreType==='time' ? '-' : '+') : (heroPick.scoreType==='time' ? '+' : '-');
+      const deltaAbs = Math.abs(deltaVal);
+      const deltaText = heroPick.scoreType === 'time' ? `${Math.round(deltaAbs)}s` : deltaAbs.toFixed(1);
+      deltaHtml = `<div class="ph-delta">${sign}${deltaText}</div>`;
+      capText = `Tus últimos ${history.length} intentos${heroPick.scoreType==='time' ? ' · más rápido = mejor' : ''}`;
+      sparkHtml = `<canvas id="homeHeroSpark" width="260" height="46" style="width:100%; max-width:100%; margin-top:8px;"></canvas>`;
+    }
+  }
+
+  el.innerHTML = `
+    <div class="progress-hero">
+      <div class="ph-top">
+        <div class="ph-mv">${escapeHtml(heroPick.name)}</div>
+        ${deltaHtml}
+      </div>
+      <div class="ph-num">${displayVal}</div>
+      ${sparkHtml}
+      <div class="ph-cap">${escapeHtml(capText)}</div>
+    </div>`;
+
+  if(sparkHtml){
+    const history = heroPick.kind === 'rm' ? rmHistoryFor(heroPick.name) : scoreHistoryFor(heroPick.name);
+    let values = history.map(h=>h.val);
+    // Para tiempo, "mejor" es menor — invertimos para que la curva suba con la mejora,
+    // mismo lenguaje visual que el resto de la app (arriba = mejor).
+    if(heroPick.kind === 'score' && heroPick.scoreType === 'time'){
+      const max = Math.max(...values);
+      values = values.map(v => max - v + 1);
+    }
+    drawSimpleLineChart('homeHeroSpark', values);
+  }
+}
+
+async function renderHomeDashboard(){
+  const [{data: rmData}, {data: scoreData}] = await Promise.all([
+    sb.from('rm_entries').select('*').eq('user_id', currentUser.id).order('created_at', {ascending:true}),
+    sb.from('scores').select('*').eq('user_id', currentUser.id).order('created_at', {ascending:true}),
+  ]);
+  const rms = rmData || [];
+  const scores = scoreData || [];
+  const onboardCard = document.getElementById('homeOnboardCard');
+  const dashCard = document.getElementById('homeDashboardCard');
+
+  if(!rms.length && !scores.length){
+    dashCard.style.display = 'none';
+    onboardCard.style.display = 'block';
+    onboardCard.innerHTML = `
+      <div class="onboard-card">
+        <div style="font-size:26px;">📈</div>
+        <h3>Acá va a vivir tu progreso</h3>
+        <p>Registra tu primer 1RM o resultado y la próxima vez que abras la app vas a ver tu evolución, como el resto de tus compañeros.</p>
+        <button class="btn small" style="margin-top:10px;" onclick="showView('rm')">+ Cargar mi primer 1RM</button>
+      </div>`;
+    return;
+  }
+  onboardCard.style.display = 'none';
+  dashCard.style.display = 'block';
+
+  const achievements = []; // {kind, name, date, isPR, display, numeric, scoreType}
+
+  const rmBestSoFar = {};
+  rms.forEach(h=>{
+    const k = h.movement, v = Number(h.rm);
+    const prevBest = rmBestSoFar[k];
+    const isPR = (prevBest === undefined) || (v >= prevBest);
+    if(prevBest === undefined || v > prevBest) rmBestSoFar[k] = v;
+    achievements.push({ kind:'rm', name:h.movement, date:h.created_at, isPR, display: fmtWeight(v) });
+  });
+
+  const scoreBestSoFar = {};
+  scores.forEach(s=>{
+    const type = s.score_type;
+    let numeric = null;
+    if(type === 'time') numeric = timeToSeconds(s.result);
+    else if(type !== 'rounds_reps') numeric = parseFloat(s.result);
+    if(numeric !== null && isNaN(numeric)) numeric = null;
+    let isPR = false;
+    if(numeric !== null){
+      const prevBest = scoreBestSoFar[s.name];
+      isPR = (prevBest === undefined) || (type==='time' ? numeric <= prevBest : numeric >= prevBest);
+      if(prevBest === undefined || (type==='time' ? numeric < prevBest : numeric > prevBest)) scoreBestSoFar[s.name] = numeric;
+    }
+    achievements.push({ kind:'score', name:s.name, date:s.created_at, isPR, display:s.result, numeric, scoreType:type });
+  });
+
+  achievements.sort((a,b)=> new Date(b.date) - new Date(a.date));
+
+  const rmHistoryFor = (name) => rms.filter(h=>h.movement===name).map(h=>({date:h.created_at, val:Number(h.rm)}));
+  const scoreHistoryFor = (name) => scores.filter(s=>s.name===name && s.score_type!=='rounds_reps')
+    .map(s=>({date:s.created_at, val: s.score_type==='time' ? timeToSeconds(s.result) : parseFloat(s.result)}))
+    .filter(h=>h.val!==null && !isNaN(h.val));
+
+  const heroPick = achievements.find(a=>a.isPR) || achievements[0];
+  renderProgressHero(heroPick, rmHistoryFor, scoreHistoryFor);
+
+  const recentEl = document.getElementById('homeRecords');
+  recentEl.innerHTML = achievements.slice(0,4).map(a=>
+    `<div class="rec-row"><b>${escapeHtml(a.name)}</b><span class="v">${escapeHtml(a.display)}${a.isPR?' <span class="pr">PR 🔥</span>':''}</span></div>`
+  ).join('');
+
+  const now = Date.now();
+  const oneMonthAgo = now - 30*86400000;
+  const prsEsteMes = achievements.filter(a=>a.isPR && new Date(a.date).getTime() >= oneMonthAgo).length;
+
+  let testLabel = '—';
+  const entry = computeTodayProgramEntry();
+  if(entry && entry.status === 'ok'){
+    const weeksLeft = entry.program.weeks - entry.week;
+    testLabel = weeksLeft <= 0 ? 'Esta sem.' : `${weeksLeft} sem.`;
+  } else if(entry && entry.status === 'finished'){
+    testLabel = 'Listo';
+  }
+
+  document.getElementById('homeStatRow').innerHTML = `
+    <div class="stat-tile"><div class="n">${prsEsteMes}</div><div class="l">PRs / mes</div></div>
+    <div class="stat-tile"><div class="n">${escapeHtml(testLabel)}</div><div class="l">Próx. test</div></div>
+  `;
+}
+
+function renderHomeSessionCompact(){
+  const card = document.getElementById('homeSessionCard');
+  const el = document.getElementById('homeSessionCompact');
+  const r = computeTodayProgramEntry();
+  if(!r || r.status !== 'ok' || isDayEmpty(r.content)){
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = 'block';
+  const rows = [];
+  if(r.content.fuerza) rows.push({l:'Fuerza', v:r.content.fuerza.split('\n')[0]});
+  if(r.content.skills) rows.push({l:'Skills', v:r.content.skills.split('\n')[0]});
+  if(r.content.wod) rows.push({l:'WOD', v:r.content.wod.split('\n')[0]});
+  el.innerHTML = rows.map(x=>`<div class="sesh-compact-row"><b>${escapeHtml(x.l)}</b><span>${escapeHtml(x.v)}</span></div>`).join('')
+    + `<button class="btn small secondary" style="width:100%; margin-top:10px;" onclick="showView('wod')">Ver sesión completa</button>`;
 }
 
 /* ---------------- WOD (Supabase: wod_notes) ---------------- */
@@ -7618,6 +7827,8 @@ async function onLoggedIn(user){
   }
 
   await refreshAssignment();
+  renderHomeSessionCompact();
+  renderHomeDashboard();
   await loadWod();
   await refreshPctData();
   renderPctTable();
