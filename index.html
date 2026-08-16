@@ -7456,7 +7456,6 @@ function drawSimpleLineChart(canvasId, values){
 // análisis ya guardado (mismos puntos + misma calibración = mismo resultado).
 function _barComputeVelocities(points, calibRatio){
   const sorted = [...points].sort((a,b)=>a.t-b.t);
-  let peakV = 0;
   const velocities = [];
   for(let i=1;i<sorted.length;i++){
     const dt = sorted[i].t - sorted[i-1].t;
@@ -7464,10 +7463,26 @@ function _barComputeVelocities(points, calibRatio){
     const dx = (sorted[i].x - sorted[i-1].x) * calibRatio;
     const dy = (sorted[i].y - sorted[i-1].y) * calibRatio;
     const distCm = Math.sqrt(dx*dx+dy*dy);
-    const v = (distCm/100) / dt; // m/s
-    velocities.push(v);
-    if(v>peakV) peakV = v;
+    velocities.push((distCm/100) / dt); // m/s
   }
+  if(!velocities.length) return { peakV: 0, velocities };
+
+  // "Velocidad pico" se calcula excluyendo tramos AISLADOS — un tramo mucho
+  // más alto que sus dos vecinos inmediatos, la firma típica de un clic mal
+  // puesto en el video (un punto fuera de lugar dispara UN tramo irreal).
+  // No se usa distancia a la mediana: una barra acelerando de verdad tiene un
+  // pico legítimamente muy por encima del promedio, y ese es justo el dato
+  // que la función tiene que conservar — filtrar por mediana lo borraría. El
+  // gráfico (`velocities`, sin filtrar) siempre muestra la curva completa;
+  // solo el número de "pico" reportado excluye los aislados.
+  const isIsolatedSpike = (v, i) => {
+    if(velocities.length < 3) return false;
+    const prev = i>0 ? velocities[i-1] : velocities[i+1];
+    const next = i<velocities.length-1 ? velocities[i+1] : velocities[i-1];
+    return v > Math.max(prev, next) * 2.5;
+  };
+  const forPeak = velocities.filter((v,i) => !isIsolatedSpike(v,i));
+  const peakV = forPeak.length ? Math.max(...forPeak) : Math.max(...velocities);
   return { peakV, velocities };
 }
 
