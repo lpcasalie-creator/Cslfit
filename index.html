@@ -170,8 +170,10 @@
   .progress-hero .ph-num{ font-family:'Barlow Condensed',sans-serif; font-weight:800; font-size:36px; line-height:1; margin-top:6px; }
   .progress-hero .ph-num span{ font-size:16px; color:var(--gray-dim); font-weight:500; }
   .progress-hero .ph-cap{ font-size:11px; color:var(--gray-dim); margin-top:8px; }
-  .stat-row2{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+  .stat-row2{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:12px; }
   .stat-tile{ background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:10px 4px; text-align:center; }
+  .stat-tile.tap{ cursor:pointer; }
+  .stat-tile.tap:active{ border-color:var(--lime); }
   .stat-tile .n{ font-family:'Barlow Condensed',sans-serif; font-weight:800; font-size:20px; color:var(--lime); }
   .stat-tile .l{ font-size:9px; letter-spacing:.05em; text-transform:uppercase; color:var(--gray-dim); margin-top:2px; }
   .rec-row{ display:flex; justify-content:space-between; font-size:12.5px; padding:7px 0; border-bottom:1px solid var(--border); }
@@ -1135,13 +1137,57 @@ function renderProgressHero(heroPick, rmHistoryFor, scoreHistoryFor){
   }
 }
 
+// Fecha local (no UTC) — evita que toISOString() corra la fecha un día cerca
+// de medianoche según el huso horario del atleta.
+function localDateStr(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+// Racha = días consecutivos con check-in terminando HOY o AYER — no se rompe
+// solo porque el atleta todavía no entrenó hoy (el día no terminó).
+function computeStreakFromDates(dateStrings){
+  const set = new Set(dateStrings);
+  const cursor = new Date();
+  if(!set.has(localDateStr(cursor))) cursor.setDate(cursor.getDate()-1);
+  let streak = 0;
+  while(set.has(localDateStr(cursor))){
+    streak++;
+    cursor.setDate(cursor.getDate()-1);
+  }
+  return streak;
+}
+async function markCheckinToday(){
+  const today = localDateStr(new Date());
+  const { error } = await sb.from('checkins').insert({ user_id: currentUser.id, checkin_date: today });
+  if(error){
+    if(/duplicate key|unique constraint/i.test(error.message||'')){
+      toast('Ya registraste tu asistencia de hoy.', 'info');
+    } else if(/relation .* does not exist|schema cache/i.test(error.message||'')){
+      console.warn('La tabla checkins aún no existe en Supabase.');
+      toast('Todavía no se puede registrar asistencia — falta crear la tabla en Supabase.', 'error');
+    } else {
+      toast('Error al registrar asistencia: '+error.message, 'error');
+    }
+    return;
+  }
+  toast('✓ Asistencia registrada — sumaste un día a tu racha.', 'success');
+  renderHomeDashboard();
+}
+
 async function renderHomeDashboard(){
-  const [{data: rmData}, {data: scoreData}] = await Promise.all([
+  const [{data: rmData}, {data: scoreData}, checkinsRes] = await Promise.all([
     sb.from('rm_entries').select('*').eq('user_id', currentUser.id).order('created_at', {ascending:true}),
     sb.from('scores').select('*').eq('user_id', currentUser.id).order('created_at', {ascending:true}),
+    sb.from('checkins').select('checkin_date').eq('user_id', currentUser.id),
   ]);
   const rms = rmData || [];
   const scores = scoreData || [];
+  // La tabla checkins puede no existir todavía (falta correr la migración) —
+  // degrada con gracia: la racha simplemente no se muestra, el resto del
+  // dashboard sigue funcionando igual.
+  const checkinDates = (checkinsRes.data || []).map(c=>c.checkin_date);
+  const checkinsAvailable = !checkinsRes.error;
+  const streak = checkinsAvailable ? computeStreakFromDates(checkinDates) : null;
+  const checkedInToday = checkinDates.includes(localDateStr(new Date()));
   const onboardCard = document.getElementById('homeOnboardCard');
   const dashCard = document.getElementById('homeDashboardCard');
 
@@ -1215,9 +1261,15 @@ async function renderHomeDashboard(){
     testLabel = 'Listo';
   }
 
-  document.getElementById('homeStatRow').innerHTML = `
+  const streakTile = checkinsAvailable
+    ? `<div class="stat-tile tap" onclick="markCheckinToday()"><div class="n">${streak}${checkedInToday?' ✓':''}</div><div class="l">Racha (días)</div></div>`
+    : '';
+  const statRowEl = document.getElementById('homeStatRow');
+  statRowEl.style.gridTemplateColumns = checkinsAvailable ? '1fr 1fr 1fr' : '1fr 1fr';
+  statRowEl.innerHTML = `
     <div class="stat-tile"><div class="n">${prsEsteMes}</div><div class="l">PRs / mes</div></div>
     <div class="stat-tile"><div class="n">${escapeHtml(testLabel)}</div><div class="l">Próx. test</div></div>
+    ${streakTile}
   `;
 }
 
