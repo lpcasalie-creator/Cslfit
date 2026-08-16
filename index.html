@@ -7428,7 +7428,11 @@ async function signUpWithCode(){
   if(codeError || !isValid){ msg.style.color='#ff8c8c'; msg.textContent = 'Código inválido o ya usado.'; return; }
 
   msg.textContent = 'Creando tu cuenta...';
-  const { data, error } = await sb.auth.signUp({ email, password });
+  // El código viaja en los metadatos del signup (no solo se valida acá en el
+  // cliente) para que un trigger en Supabase pueda rechazar el alta a nivel de
+  // base de datos si no viene un código válido — la validación de arriba es
+  // para dar feedback rápido al usuario, no la barrera de seguridad real.
+  const { data, error } = await sb.auth.signUp({ email, password, options: { data: { invite_code: code } } });
   if(error){ msg.style.color='#ff8c8c'; msg.textContent = 'Error: ' + error.message; return; }
 
   let consumeFailed = false;
