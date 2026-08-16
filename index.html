@@ -267,8 +267,9 @@
   <!-- HOME -->
   <section id="home" class="view active">
     <div class="card">
-      <h2>Hoy</h2>
-      <p class="muted" id="homeDate"></p>
+      <h2 id="homeGreeting">Hola 👋</h2>
+      <p class="muted" id="homeMotivational" style="margin-top:2px;"></p>
+      <p class="muted" id="homeDate" style="margin-top:8px;"></p>
     </div>
     <div class="card">
       <h3>Accesos rápidos</h3>
@@ -971,6 +972,44 @@ function showView(id){
 }
 
 document.getElementById('homeDate').textContent = new Date().toLocaleDateString('es-CL',{weekday:'long', day:'numeric', month:'long'});
+
+/* ---------------- SALUDO + FRASE DEL DÍA (Home) ---------------- */
+// Tono CrossFit/HYROX serio, no genérico de autoayuda — coincide con el
+// perfil del coach (CF-L3 · CCFT · USAW L1 · HYROX Official Coach).
+const HOME_FRASES = [
+  'La constancia le gana a la motivación.',
+  'Hoy no tenés que sentirte listo. Solo tenés que aparecer.',
+  'El WOD no se hace más fácil — vos te hacés más fuerte.',
+  'Nadie dijo que iba a ser fácil. Dijeron que iba a valer la pena.',
+  'Disciplina es hacerlo aunque no tengas ganas.',
+  'Un día más de trabajo, un día menos de duda.',
+  'No hay atajos. Solo repeticiones.',
+  'El cuerpo logra lo que la mente cree posible.',
+  'Compará tu hoy con tu ayer, no con el de al lado.',
+  'La técnica primero. La intensidad, cuando la técnica aguante.',
+  'Lo que no se registra, no se mejora.',
+  'Cada repetición es una decisión.',
+  'El descanso también es entrenamiento.',
+  'No busques motivación — construí el hábito.',
+  'Sumá un día más a la racha.',
+  'La barra no miente. Vos tampoco te mientas.',
+  'Progreso, no perfección.',
+  'Hoy entrenás para el vos de dentro de un año.',
+  'La incomodidad de hoy es la fuerza de mañana.',
+  'Preparate. No sabés cuándo vas a necesitar estar listo.',
+];
+function renderHomeGreeting(){
+  const h = new Date().getHours();
+  const saludoHora = h < 12 ? 'Buenos días' : h < 20 ? 'Buenas tardes' : 'Buenas noches';
+  const nombre = (currentProfile && currentProfile.full_name) ? currentProfile.full_name.split(' ')[0] : '';
+  const greetEl = document.getElementById('homeGreeting');
+  if(greetEl) greetEl.textContent = nombre ? `${saludoHora}, ${nombre} 👋` : `${saludoHora} 👋`;
+  // Determinista por día del año — cambia todos los días, no en cada render.
+  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(),0,0)) / 86400000);
+  const frase = HOME_FRASES[dayOfYear % HOME_FRASES.length];
+  const fraseEl = document.getElementById('homeMotivational');
+  if(fraseEl) fraseEl.textContent = frase;
+}
 
 /* ---------------- WOD (Supabase: wod_notes) ---------------- */
 async function saveWod(){
@@ -7528,6 +7567,7 @@ async function onLoggedIn(user){
   let { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
   currentProfile = profile;
   currentWeightUnit = (profile && profile.weight_unit) || 'kg'; // Fase 18 (Fix 15)
+  renderHomeGreeting();
 
   document.getElementById('authGate').style.display = 'none';
   document.getElementById('appRoot').style.display = 'block';
