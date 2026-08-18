@@ -714,6 +714,13 @@
           </select>
           <p id="genContinueFromMsg" style="font-size:12px; margin-top:6px; color:var(--gray-dim);"></p>
         </div>
+        <div id="genSaturdayLargoWrap" style="display:none; margin-top:10px;">
+          <label style="display:flex; align-items:center; gap:8px; text-transform:none; letter-spacing:normal; font-size:13px; color:var(--white);">
+            <input type="checkbox" id="genSaturdayLargo" style="width:auto; accent-color:var(--lime);">
+            Incluir sábado largo
+          </label>
+          <p id="genSaturdayLargoNote" style="font-size:12px; margin-top:4px; color:var(--gray-dim);">Sesión opcional extra el sábado (2-4 piezas cortas, 30-40' en total). No cuenta como uno de tus días de la semana.</p>
+        </div>
         <button class="btn" style="margin-top:10px;" onclick="autoGenerateProgram()">Generar automático</button>
       </div>
 
@@ -5248,6 +5255,29 @@ function renderDayOrderPickers(){
     _prevWodSignaturesCache = null;
   }
 
+  // Sábado largo (Fase 18, Fix 11): solo tiene sentido en CrossFit — reutiliza
+  // funciones internas del motor CrossFit que no existen para los otros enfoques.
+  // Si el sábado (día 5) ya es uno de los días elegidos por DAY_INDEX_MAP (caso de
+  // 4 días/semana), no hay dónde ponerlo sin pisar la sesión normal: se deshabilita
+  // y se avisa, en vez de generar algo que el coach no pidió.
+  const satWrap = document.getElementById('genSaturdayLargoWrap');
+  const satCheckbox = document.getElementById('genSaturdayLargo');
+  const satNote = document.getElementById('genSaturdayLargoNote');
+  if(focus === 'crossfit'){
+    satWrap.style.display = 'block';
+    const sabadoOcupado = DAY_INDEX_MAP[daysPerWeek].includes(5);
+    satCheckbox.disabled = sabadoOcupado;
+    if(sabadoOcupado){
+      satCheckbox.checked = false;
+      satNote.textContent = 'Con 4 días/semana el sábado ya es un día de entrenamiento normal — no hay espacio para agregar el sábado largo.';
+    } else {
+      satNote.textContent = "Sesión opcional extra el sábado (2-4 piezas cortas, 30-40' en total). No cuenta como uno de tus días de la semana.";
+    }
+  } else {
+    satWrap.style.display = 'none';
+    satCheckbox.checked = false;
+  }
+
   // CrossFit: sin selección manual de día. No existe TEMPLATE_LABELS.crossfit ni
   // TEMPLATE_DOMAIN.crossfit a propósito (Fase CrossFit 4) — el dominio real lo decide
   // _crossfitWeeklyDomains() en tiempo de generación, no una posición fija de array.
@@ -5463,10 +5493,29 @@ function _addWarmupCooldown(day, focus, domain){
   return out;
 }
 
+// Fase 18 (Fix 11, conexión a interfaz): arma el texto final del sábado largo a
+// partir de las piezas que devuelve _crossfitSaturdayLargo(). Cada wodTexto ya
+// trae su propio encabezado (formato + cap), así que aquí solo se numeran las
+// piezas y se intercala el descanso entre ellas.
+function _crossfitSaturdayLargoTexto(sat){
+  const bloques = sat.piezas.map((p, i)=>{
+    const descanso = i < sat.piezas.length-1 ? `\n\nDescanso ${sat.descansoMin}'` : '';
+    return `PIEZA ${p.numero}\n${p.texto}${descanso}`;
+  });
+  return `SÁBADO LARGO (opcional, no cuenta como día de la semana) — ${sat.nPiezas} piezas · ${sat.totalMinutos}' de trabajo total\n\n${bloques.join('\n\n')}`;
+}
+
 function autoGenerateProgram(){
   const focus = document.getElementById('genFocus').value;
   const weeksCount = Math.max(2, parseInt(document.getElementById('genWeeks').value)||4);
   const daysPerWeek = parseInt(document.getElementById('genDays').value);
+  // Fase 18 (Fix 11): solo CrossFit, y solo si el sábado (día 5) no es ya uno de
+  // los días normales de la semana — mismo chequeo que deshabilita el checkbox en
+  // renderDayOrderPickers(), repetido aquí por si el estado del checkbox quedó
+  // desincronizado (defensivo, no confía solo en el atributo disabled del DOM).
+  const wantSaturdayLargo = focus === 'crossfit'
+    && document.getElementById('genSaturdayLargo').checked
+    && !DAY_INDEX_MAP[daysPerWeek].includes(5);
   const opts = {
     equipment: document.getElementById('genEquipment').value,
     level: document.getElementById('genLevel').value,
@@ -5642,6 +5691,16 @@ function autoGenerateProgram(){
         if(btn) btn.style.display = 'block';
       }
     });
+    // Fase 18 (Fix 11): sábado largo — completamente al margen del bucle de
+    // templates.forEach de arriba (día 5, no está en dayIndices). Se genera una vez
+    // por semana, con su propia semilla (offset 500 dentro de _crossfitSaturdayLargo),
+    // así que nunca puede coincidir con lo que ya se sorteó para Lunes-Viernes.
+    if(wantSaturdayLargo){
+      const w = wi+1;
+      const sat = _crossfitSaturdayLargo(wi, opts);
+      const wd = document.getElementById(`day_w${w}_d5_wod`);
+      if(wd) wd.value = _crossfitSaturdayLargoTexto(sat);
+    }
   }
   document.getElementById('progFormTitle').scrollIntoView({behavior:'smooth', block:'start'});
 }
