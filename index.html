@@ -4267,12 +4267,32 @@ const CROSSFIT_FORMAT_SLOTS = {
   'For Time 4': { medio:4 },
 };
 
-// Semilla independiente de la rotación de patrón (multiplicadores distintos:
-// wi*3+ti*5+offset*2, vs wi+ti+offset del patrón) — para que formato y patrón no
-// se muevan siempre juntos. Incluye _regenSeed: "Regenerar día" también puede
-// cambiar el formato (regla 11 aprobada), a diferencia del patrón (Fase 11, que
-// se mantuvo invariante por el riesgo de colisión semanal — el formato no
-// participa en esa garantía, así que acá no hay ese riesgo).
+// Fase 20 (auditoría de distribución, pedido de Luis: "prueba de wods en 3-4
+// meses y estadística de tipo de wod"): simulando 16 semanas reales se encontró
+// que con 4 días/semana (el default del formulario) el formato quedaba
+// COMPLETAMENTE fijo por dominio — dominio 'corto' solo daba AMRAP o Single,
+// nunca EMOM ni For Time (0% en 32 días simulados); 'medio' solo EMOM (0% para
+// AMRAP/For Time/For Time 4); 'largo' solo Chipper (0% para AMRAP/EMOM). Causa:
+// idx=(wi*5+ti*7+...)%N es una combinación LINEAL de wi y ti, y la posición de
+// cada dominio (_crossfitWeeklyDomains) es TAMBIÉN una función lineal-periódica
+// de (wi,ti) con período 4 — con daysPerWeek=4 ambas fórmulas entran en
+// resonancia exacta y el resultado mod N deja de variar. Con 3 y 5 días/semana
+// no hay esa resonancia (períodos distintos), por eso ahí sí se veía variedad.
+// Mismo tipo de bug que el propio comentario de abajo ya documentaba haber
+// encontrado una vez (wi*3 degenerado) — la causa real era más profunda: CUALQUIER
+// combinación lineal de (wi,ti) puede resonar con otra función lineal-periódica
+// del mismo sistema. La solución robusta no es ajustar los multiplicadores de
+// nuevo (mismo riesgo con otro daysPerWeek), sino un hash de mezcla — mismo
+// mecanismo que ya usa _crossfitGenerateDayWithContinuity (Fase 16C) para su
+// selección ponderada, mucho menos propenso a alinearse con otra señal lineal
+// del sistema. Determinístico igual que antes (mismo wi/ti/regenSeed → mismo
+// resultado, necesario para "Regenerar día").
+function _crossfitFormatHash(domain, wi, ti, offset, regenSeed){
+  let h = 0;
+  const s = `fmt|${domain}|${wi}|${ti}|${offset}|${regenSeed}`;
+  for(let i=0; i<s.length; i++) h = (h*31 + s.charCodeAt(i)) % 1000003;
+  return h;
+}
 function _crossfitPickFormat(domain, wi, ti, offset, opts){
   let opciones = CROSSFIT_FORMAT_BY_DOMAIN[domain] || ['AMRAP'];
   const regenSeed = (opts && opts._regenSeed) || 0;
@@ -4290,11 +4310,7 @@ function _crossfitPickFormat(domain, wi, ti, offset, opts){
     });
     if(filtradas.length) opciones = filtradas;
   }
-  // Multiplicadores primos que NO comparten factor con 2 ni 3 (las longitudes reales
-  // de las listas de opciones) — wi*3 anterior era degenerado: múltiplo de 3 siempre
-  // aporta 0 mod 3, eliminando el índice 1 (Chipper) por completo. Mismo tipo de bug
-  // ya encontrado y corregido en la Fase CrossFit 1 original.
-  const idx = (wi*5 + ti*7 + offset*11 + regenSeed*13) % opciones.length;
+  const idx = _crossfitFormatHash(domain, wi, ti, offset, regenSeed) % opciones.length;
   return opciones[idx];
 }
 
