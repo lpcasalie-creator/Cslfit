@@ -4997,27 +4997,33 @@ function _crossfitMonoWod(wi, ti, opts, domain, regenSeed, durMinutos){
 // patrones básicos (squat/hinge/push/pull) aparezcan todos en una misma semana —
 // varias ventanas del ciclo de 11 dejan una semana entera sin ningún día de
 // tracción, por ejemplo. _crossfitWeekPatterns() parte del mismo resultado de
-// siempre (misma semilla wi+ti de _pick) y repara SOLO cuando falta cobertura
-// mínima: swap determinístico (nunca al azar), sacrificando primero un patrón
-// duplicado esa semana y, si no hay duplicado, un día de especialidad (skill/
-// olympic/monostructural) antes que tocar un básico ya único — mismo criterio
-// que el propio pedido de Luis de priorizar los 4 básicos por sobre lo técnico.
-// Con 3 días/semana no caben los 4 básicos: se tolera que falte 1. Validado por
-// simulación externa: 100% de las semanas cubren el mínimo requerido para 3/4/5
-// días, sin romper la garantía de "sin repetición de patrón en días consecutivos".
+// siempre (misma semilla wi+ti de _pick) y repara SOLO cuando la cobertura de
+// básicos cae por debajo de CROSSFIT_WEEK_MIN_BASICS: swap determinístico (nunca
+// al azar), sacrificando primero un patrón duplicado esa semana y, si no hay
+// duplicado, un día de especialidad (skill/olympic/monostructural) antes que
+// tocar un básico ya único.
+// Fix (corrección al primer intento): exigir SIEMPRE los 4 básicos con
+// daysPerWeek 3 o 4 terminaba usando TODOS los cupos de la semana en básicos —
+// 0 días de skill/olympic/monostructural, nunca, para las dos opciones de días
+// más comunes (4 es el default del formulario). Confirmado por simulación:
+// "Total skill days found: 0" en 8 semanas de 4 días. El mínimo por debajo se
+// deja siempre al menos 1 cupo libre para especialidad, y solo repara los casos
+// realmente degenerados (1 básico en 3 días, 2 básicos en 4 días).
 const CROSSFIT_BASIC_PATTERNS = ['squat','hinge','push','pull'];
+const CROSSFIT_WEEK_MIN_BASICS = { 3:2, 4:3, 5:4 };
 function _crossfitWeekPatterns(wi, daysPerWeek){
   const base = Array.from({length:daysPerWeek}, (_,ti)=>_pick(CROSSFIT_PATTERN_ROTATION, wi+ti));
-  const minMissingAllowed = daysPerWeek >= 4 ? 0 : 1;
-  const missing = CROSSFIT_BASIC_PATTERNS.filter(b=>!base.includes(b));
-  if(missing.length <= minMissingAllowed) return base;
+  const minBasics = CROSSFIT_WEEK_MIN_BASICS[daysPerWeek] || Math.min(3, daysPerWeek);
+  const presentes = CROSSFIT_BASIC_PATTERNS.filter(b=>base.includes(b));
+  if(presentes.length >= minBasics) return base;
 
+  const faltantes = CROSSFIT_BASIC_PATTERNS.filter(b=>!base.includes(b)).slice(0, minBasics - presentes.length);
   const out = base.slice();
   const countOf = (p)=> out.filter(x=>x===p).length;
   const isAdjacentSafe = (ti, pattern)=>
     (ti===0 || out[ti-1]!==pattern) && (ti===out.length-1 || out[ti+1]!==pattern);
 
-  missing.slice(0, missing.length - minMissingAllowed).forEach(faltante=>{
+  faltantes.forEach(faltante=>{
     const candidatos = out
       .map((p, ti)=>({ p, ti }))
       .filter(({p, ti})=> p!==faltante && isAdjacentSafe(ti, faltante))
