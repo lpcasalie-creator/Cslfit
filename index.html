@@ -4863,20 +4863,38 @@ const CROSSFIT_SKILL_PROGRESION = {
   'Chest-to-Bar Pull-up': ['Strict Pull-up 2x3', 'Kip Swing 10'],
   'Butterfly Pull-up': ['Kipping Pull-up 2x5'],
 };
-function _crossfit17a2PrescribirSkill(mov, opts){
+// Fase 19 (progresión de skills): antes esta función sólo miraba la dificultad
+// del movimiento — un mismo Toes-to-Bar prescribía exactamente 3x8-12 en la
+// semana 1 y en la semana 8 del mismo ciclo, sin ninguna diferencia. La carga
+// de Fuerza ya progresaba con `wi` (_pct1RM); Skills no tenía ese eje. Mismo
+// criterio "sube con la semana, techo fijo" que _pct1RM/_rpe, aplicado a dos
+// variables reales de progresión de gimnasia:
+//  1) Reps: arranca en el piso del rango de dificultad y sube 1 rep por semana
+//     hasta el techo del mismo rango (nunca lo pasa — el rango ya lo fijó la
+//     dificultad del movimiento).
+//  2) Andamiaje (CROSSFIT_SKILL_PROGRESION): la profundidad por nivel ya
+//     existente (Fix 10) es ahora un TECHO, no un valor fijo — se reduce con
+//     las semanas porque se asume que la base técnica ya se construyó: full
+//     sólo en semanas 1-2, mitad desde semana 3, nada desde semana 5. Nunca
+//     sube (avanzado sigue en 0 siempre, no hay retroceso a "necesita más
+//     preparación").
+function _crossfit17a2PrescribirSkill(mov, opts, wi){
   if(/\d+\s*x\s*\d+/i.test(mov)) return mov;
   const dif = _crossfitDifficulty(mov);
-  const reps = dif==='ADVANCED' ? '3-5' : dif==='INTERMEDIATE' ? '5-8' : '8-12';
+  const [repsMin, repsMax] = dif==='ADVANCED' ? [3,5] : dif==='INTERMEDIATE' ? [5,8] : [8,12];
+  const wiVal = wi || 0;
+  const reps = Math.min(repsMin + wiVal, repsMax);
   const lineaFinal = `${mov} ${_lvlSets(3,opts.level)}x${reps}`;
-  // Fase 18 (Fix 10): profundidad de la progresión mostrada según nivel —
-  // principiante ve la secuencia completa, intermedio la mitad más cercana al
-  // movimiento (redondeando hacia arriba), avanzado solo el movimiento final
-  // (comportamiento idéntico a como funcionaba antes de este fix).
+
   const todos = CROSSFIT_SKILL_PROGRESION[mov] || [];
+  let profundidadNivel = opts.level === 'principiante' ? 2 : opts.level === 'avanzado' ? 0 : 1;
+  if(wiVal >= 4) profundidadNivel = 0;
+  else if(wiVal >= 2) profundidadNivel = Math.min(profundidadNivel, 1);
+
   let componentes;
-  if(opts.level === 'principiante') componentes = todos;
-  else if(opts.level === 'avanzado') componentes = [];
-  else componentes = todos.slice(Math.ceil(todos.length/2)); // intermedio: la mitad final
+  if(profundidadNivel === 2) componentes = todos;
+  else if(profundidadNivel === 1) componentes = todos.slice(Math.ceil(todos.length/2)); // mitad más cercana al movimiento
+  else componentes = [];
   if(!componentes.length) return lineaFinal;
   return componentes.map(c=>`• ${c}`).join('\n') + `\n${lineaFinal}`;
 }
@@ -5121,7 +5139,7 @@ function _crossfitDay(offset){
       const poolSkillAgregado = _crossfitSkillPoolAmplio(opts);
       const movSkillAgregado = _crossfit17a2Pick(poolSkillAgregado, wi, ti + 99 + regenSeedDia*19, opts, 'skill');
       movsSkill.push(movSkillAgregado);
-      lineasSkill.push(_crossfit17a2PrescribirSkill(movSkillAgregado, opts));
+      lineasSkill.push(_crossfit17a2PrescribirSkill(movSkillAgregado, opts, wi));
     } else if(esDiaSkillPre){
       // Nativo: Skills, escalado por duración, evitando repetir familia cuando son 2.
       // Fase 18 (Fix 5): pool amplio en vez de GEN_POOLS.gimnasia.skill[equipment]
@@ -5137,7 +5155,7 @@ function _crossfitDay(offset){
         if(!familiasUsadas.has(fam) || movsSkill.length===0){ movsSkill.push(m); familiasUsadas.add(fam); }
         intento++;
       }
-      movsSkill.forEach(m=>lineasSkill.push(_crossfit17a2PrescribirSkill(m, opts)));
+      movsSkill.forEach(m=>lineasSkill.push(_crossfit17a2PrescribirSkill(m, opts, wi)));
       // Agregado: Fuerza fija en 1, pool 'squat' (ya cubierto por BEGINNER_SUB compartido).
       const poolFuerzaAgregada = GEN_POOLS.fuerza.squat[opts.equipment];
       const movFuerzaAgregada = _crossfit17a2Pick(poolFuerzaAgregada, wi, ti + 99 + regenSeedDia*19, opts, 'squat');
@@ -5160,7 +5178,7 @@ function _crossfitDay(offset){
       const poolSkillAgregado = _crossfitSkillPoolAmplio(opts);
       const movSkillAgregado = _crossfit17a2Pick(poolSkillAgregado, wi, ti + 99 + regenSeedDia*19, opts, 'skill');
       movsSkill.push(movSkillAgregado);
-      lineasSkill.push(_crossfit17a2PrescribirSkill(movSkillAgregado, opts));
+      lineasSkill.push(_crossfit17a2PrescribirSkill(movSkillAgregado, opts, wi));
     }
 
     // Accesorio/prehab — pedido de Luis (core, unilateral, salud de hombro). Reutiliza
