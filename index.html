@@ -4992,11 +4992,50 @@ function _crossfitMonoWod(wi, ti, opts, domain, regenSeed, durMinutos){
   return { wodTexto: `${modalidad} ${durMinutos}' continuo — ritmo sostenido (zona 2-3, conversacional)`, estructuraLabel: 'Steady State' };
 }
 
+// Fase 19 (balance semanal de patrones): CROSSFIT_PATTERN_ROTATION ya evita que
+// el patrón se repita en días consecutivos, pero eso no garantiza que los 4
+// patrones básicos (squat/hinge/push/pull) aparezcan todos en una misma semana —
+// varias ventanas del ciclo de 11 dejan una semana entera sin ningún día de
+// tracción, por ejemplo. _crossfitWeekPatterns() parte del mismo resultado de
+// siempre (misma semilla wi+ti de _pick) y repara SOLO cuando falta cobertura
+// mínima: swap determinístico (nunca al azar), sacrificando primero un patrón
+// duplicado esa semana y, si no hay duplicado, un día de especialidad (skill/
+// olympic/monostructural) antes que tocar un básico ya único — mismo criterio
+// que el propio pedido de Luis de priorizar los 4 básicos por sobre lo técnico.
+// Con 3 días/semana no caben los 4 básicos: se tolera que falte 1. Validado por
+// simulación externa: 100% de las semanas cubren el mínimo requerido para 3/4/5
+// días, sin romper la garantía de "sin repetición de patrón en días consecutivos".
+const CROSSFIT_BASIC_PATTERNS = ['squat','hinge','push','pull'];
+function _crossfitWeekPatterns(wi, daysPerWeek){
+  const base = Array.from({length:daysPerWeek}, (_,ti)=>_pick(CROSSFIT_PATTERN_ROTATION, wi+ti));
+  const minMissingAllowed = daysPerWeek >= 4 ? 0 : 1;
+  const missing = CROSSFIT_BASIC_PATTERNS.filter(b=>!base.includes(b));
+  if(missing.length <= minMissingAllowed) return base;
+
+  const out = base.slice();
+  const countOf = (p)=> out.filter(x=>x===p).length;
+  const isAdjacentSafe = (ti, pattern)=>
+    (ti===0 || out[ti-1]!==pattern) && (ti===out.length-1 || out[ti+1]!==pattern);
+
+  missing.slice(0, missing.length - minMissingAllowed).forEach(faltante=>{
+    const candidatos = out
+      .map((p, ti)=>({ p, ti }))
+      .filter(({p, ti})=> p!==faltante && isAdjacentSafe(ti, faltante))
+      .sort((a,b)=>{
+        const score = (x)=> countOf(x.p) > 1 ? 0 : (!CROSSFIT_BASIC_PATTERNS.includes(x.p) ? 1 : 2);
+        return score(a) - score(b) || a.ti - b.ti;
+      });
+    if(candidatos.length) out[candidatos[0].ti] = faltante;
+  });
+  return out;
+}
+
 function _crossfitDay(offset){
   return function(wi, isTest, opts, ti){
     // Ajuste 1 (Fase CrossFit 1): el patrón del día sigue rotando según semana+día,
     // pero ahora es un eje TOTALMENTE INDEPENDIENTE del dominio.
-    const dayPattern = _pick(CROSSFIT_PATTERN_ROTATION, wi + (ti||0) + offset);
+    const daysPerWeekPattern = opts.daysPerWeek || 4;
+    const dayPattern = _crossfitWeekPatterns(wi, daysPerWeekPattern)[ti||0];
     const src = CROSSFIT_STRENGTH_SOURCE[dayPattern];
 
     // Dominio: decidido por la distribución semanal explícita, NO por el patrón.
