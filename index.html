@@ -4287,11 +4287,35 @@ const CROSSFIT_FORMAT_SLOTS = {
 // selección ponderada, mucho menos propenso a alinearse con otra señal lineal
 // del sistema. Determinístico igual que antes (mismo wi/ti/regenSeed → mismo
 // resultado, necesario para "Regenerar día").
+// Fix (2da vuelta): el hash de string de arriba seguía dando 0% de probabilidad
+// a un índice completo cuando 'corto' se combinaba con daysPerWeek=4 y el pool
+// SIN filtrar (3 valores de nSlots posibles) — confirmado con dump: hash%3 daba
+// SIEMPRE 0 o 1, nunca 2, para los (wi,ti) exactos que caen en dominio 'corto'.
+// Un hash polinomial de string sigue siendo, en el fondo, una combinación casi-
+// lineal de wi/ti — puede resonar con OTRA función periódica del sistema
+// (_crossfitWeeklyDomains) igual que la fórmula lineal original, sólo que de
+// forma menos obvia. _crossfitMix32 es un mezclador de bits (avalancha, estilo
+// Thomas Wang/splitmix) sobre un entero — cada bit de salida depende de forma
+// no lineal de TODOS los bits de entrada, así que ya no hay combinación de
+// multiplicadores que pueda cancelarse contra otra fórmula lineal-periódica del
+// motor. Validado con simulación de 100+ semanas × 3/4/5 días: la elección de
+// nSlots deja de tener índices con probabilidad cero.
+function _crossfitMix32(x){
+  x = (x ^ (x >>> 16)) >>> 0;
+  x = Math.imul(x, 0x45d9f3b) >>> 0;
+  x = (x ^ (x >>> 16)) >>> 0;
+  x = Math.imul(x, 0x45d9f3b) >>> 0;
+  x = (x ^ (x >>> 16)) >>> 0;
+  return x;
+}
+const CROSSFIT_FORMAT_DOMAIN_ID = { corto:1, medio:2, largo:3 };
 function _crossfitFormatHash(domain, wi, ti, offset, regenSeed){
-  let h = 0;
-  const s = `fmt|${domain}|${wi}|${ti}|${offset}|${regenSeed}`;
-  for(let i=0; i<s.length; i++) h = (h*31 + s.charCodeAt(i)) % 1000003;
-  return h;
+  let seed = (CROSSFIT_FORMAT_DOMAIN_ID[domain]||0) * 7919
+           + wi * 104729
+           + ti * 15485867
+           + offset * 32452843
+           + regenSeed * 49979687;
+  return _crossfitMix32(seed >>> 0);
 }
 function _crossfitPickFormat(domain, wi, ti, offset, opts){
   let opciones = CROSSFIT_FORMAT_BY_DOMAIN[domain] || ['AMRAP'];
@@ -4310,8 +4334,27 @@ function _crossfitPickFormat(domain, wi, ti, offset, opts){
     });
     if(filtradas.length) opciones = filtradas;
   }
-  const idx = _crossfitFormatHash(domain, wi, ti, offset, regenSeed) % opciones.length;
-  return opciones[idx];
+  // Fix (pedido de Luis: "no tantos couplet"): antes se elegía uniforme sobre los
+  // NOMBRES de formato — pero en 'corto' y 'medio', 2 de los 4 nombres (AMRAP y
+  // For Time) mapean al MISMO nSlots=2, así que un WOD de 2 movimientos salía con
+  // el doble de probabilidad que uno de 1 o de 3 (confirmado con dump: 46% de los
+  // días 'corto' terminaban en 2 movimientos). Se elige primero la CANTIDAD de
+  // movimientos de forma pareja entre los valores realmente disponibles en este
+  // dominio, y recién ahí el nombre de formato entre los que comparten esa
+  // cantidad — variedad de estructura pareja, variedad de nombre dentro de cada
+  // estructura. En 'largo' esto no cambia nada en la práctica: AMRAP y EMOM ya
+  // eran los únicos con nSlots=3 ahí, así que la ponderación 1:2:1 (Chipper 2x,
+  // Fase 14B, ya aprobada) queda intacta.
+  const bySlots = {};
+  opciones.forEach(f=>{
+    const n = (CROSSFIT_FORMAT_SLOTS[f] && CROSSFIT_FORMAT_SLOTS[f][domain]) || 2;
+    (bySlots[n] = bySlots[n] || []).push(f);
+  });
+  const slotValues = Object.keys(bySlots).map(Number).sort((a,b)=>a-b);
+  const chosenSlot = slotValues[_crossfitFormatHash(domain, wi, ti, offset, regenSeed) % slotValues.length];
+  const grupo = bySlots[chosenSlot];
+  const idx = _crossfitFormatHash(domain+'|nombre', wi, ti, offset, regenSeed) % grupo.length;
+  return grupo[idx];
 }
 
 // Techo razonable para calorías en contexto de volumen total (For Time/Chipper) —
