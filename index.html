@@ -5144,24 +5144,45 @@ const CROSSFIT_SINGLE_CLASICOS = [
   { name:'Karen',  cat:'girls', minLevel:'principiante' },
   { name:'Randy',  cat:'hero',  minLevel:'intermedio' },
 ];
-function _crossfitSingleClasico(wi, ti, opts){
-  const disponibles = CROSSFIT_SINGLE_CLASICOS.filter(c =>
+// Fase 21b (pedido de Luis: "también hay triplet y chippers"): mismo mecanismo
+// que Single, ahora para el formato 'Triplet' — Kelly/Eva/DT/Badger ya eran
+// benchmarks reales de 3 movimientos dentro de BENCHMARK_WODS (Kelly: run+box
+// jump+wall ball; Eva: run+KB swing+pull-ups; DT: deadlift+hang power clean+
+// push jerk; Badger: squat clean+pull-ups+run), sólo que nunca se conectaban al
+// día en que el generador elegía Triplet específicamente — sólo aparecían al
+// azar 1 vez cada 4 semanas vía Fase 17C, sin relación con el formato del día.
+// Kelly es la única 100% bodyweight/cardio — apta para cualquier nivel; Eva
+// (KB pesada + volumen alto), DT y Badger (barra/oly técnica) quedan desde
+// intermedio, mismo criterio que Single.
+const CROSSFIT_TRIPLET_CLASICOS = [
+  { name:'Kelly',  cat:'girls', minLevel:'principiante' },
+  { name:'Eva',    cat:'girls', minLevel:'intermedio' },
+  { name:'DT',     cat:'hero',  minLevel:'intermedio' },
+  { name:'Badger', cat:'hero',  minLevel:'intermedio' },
+];
+// `sal` decorrela la semilla de Single vs Triplet — en la práctica nunca se
+// activan el mismo día (son formatos distintos), pero mantiene cada mecanismo
+// independiente por higiene, sin depender de esa exclusión mutua.
+function _crossfitPickClasico(pool, wi, ti, opts, sal){
+  const disponibles = pool.filter(c =>
     opts.level !== 'principiante' || c.minLevel === 'principiante');
   if(!disponibles.length) return null;
   const regenSeed = opts._regenSeed || 0;
-  // Bug encontrado y corregido en simulación antes de aprobar: usar el mismo
-  // _movIdx(wi,ti) para la puerta ("1 de cada 4") y para elegir CUÁL clásico,
-  // solo desplazado por un múltiplo de 4, daba SIEMPRE el mismo residuo mod 4
-  // — Isabel salía el 100% de las veces que se activaba, nunca Grace/Karen/
-  // Randy. Se usa el mezclador de bits (mismo que _crossfitFormatHash) con dos
-  // semillas independientes, para que la puerta y la elección no queden atadas.
-  const seedPuerta = _crossfitMix32((wi*104729 + ti*15485867 + regenSeed*49979687 + 777) >>> 0);
-  if(seedPuerta % 4 !== 0) return null; // 1 de cada 4 días 'Single'
-  const seedEleccion = _crossfitMix32((wi*15485867 + ti*104729 + regenSeed*32452843 + 333221) >>> 0);
+  // Bug encontrado y corregido en simulación antes de aprobar (Single): usar el
+  // mismo _movIdx(wi,ti) para la puerta ("1 de cada 4") y para elegir CUÁL
+  // clásico, solo desplazado por un múltiplo de 4, daba SIEMPRE el mismo
+  // residuo mod 4 — el primero de la lista salía el 100% de las veces. Se usa
+  // el mezclador de bits (mismo que _crossfitFormatHash) con dos semillas
+  // independientes, para que la puerta y la elección no queden atadas.
+  const seedPuerta = _crossfitMix32((wi*104729 + ti*15485867 + regenSeed*49979687 + 777 + sal) >>> 0);
+  if(seedPuerta % 4 !== 0) return null; // 1 de cada 4 días de este formato
+  const seedEleccion = _crossfitMix32((wi*15485867 + ti*104729 + regenSeed*32452843 + 333221 + sal) >>> 0);
   const elegido = disponibles[seedEleccion % disponibles.length];
   const bm = BENCHMARK_WODS[elegido.cat].find(w => w.name === elegido.name);
   return bm ? { ...bm, cat: elegido.cat } : null;
 }
+function _crossfitSingleClasico(wi, ti, opts){ return _crossfitPickClasico(CROSSFIT_SINGLE_CLASICOS, wi, ti, opts, 0); }
+function _crossfitTripletClasico(wi, ti, opts){ return _crossfitPickClasico(CROSSFIT_TRIPLET_CLASICOS, wi, ti, opts, 999983); }
 
 function _crossfitDay(offset){
   return function(wi, isTest, opts, ti){
@@ -5310,10 +5331,19 @@ function _crossfitDay(offset){
       lineasFuerza.push(movAccesorio);
     }
 
-    // Fase 21: en día de formato 'Single', 1 de cada 4 veces se usa un clásico
-    // de un solo movimiento (Isabel/Grace/Karen/Randy) en vez del movimiento al
-    // azar de siempre — ver comentario junto a _crossfitSingleClasico().
-    const clasico = (!esDiaMono && wodFormat === 'Single') ? _crossfitSingleClasico(wi, ti, opts) : null;
+    // Fase 21/21b: en día de formato 'Single', 1 de cada 4 veces se usa un
+    // clásico de un solo movimiento (Isabel/Grace/Karen/Randy). En 'Triplet'
+    // (nSlots=3 producido por AMRAP o For Time — EMOM con 3 estaciones es una
+    // identidad distinta, no lleva la etiqueta "Triplet CrossFit" y no aplica
+    // acá), lo mismo con Kelly/Eva/DT/Badger. El resto de las veces sigue
+    // siendo el movimiento/combinación al azar de siempre — ver comentario
+    // junto a _crossfitPickClasico().
+    const clasicoLabel = (!esDiaMono && wodFormat === 'Single') ? 'Single'
+      : (!esDiaMono && nSlots === 3 && (wodFormat === 'AMRAP' || wodFormat === 'For Time')) ? 'Triplet'
+      : null;
+    const clasico = clasicoLabel === 'Single' ? _crossfitSingleClasico(wi, ti, opts)
+      : clasicoLabel === 'Triplet' ? _crossfitTripletClasico(wi, ti, opts)
+      : null;
 
     // Metcon: GENERATE → VALIDATE → REPAIR → DELIVER, con interferencia gradual —
     // SIN CAMBIOS respecto a antes de esta fase (regla aprobada: la selección de
@@ -5351,7 +5381,7 @@ function _crossfitDay(offset){
       // una función aparte que recibe los mismos parámetros que ya se calculaban
       // en este punto.
     const { wodTexto, estructuraLabel } = clasico
-      ? { wodTexto: `Benchmark (Single): ${clasico.name}\n${clasico.desc}`, estructuraLabel: 'Single' }
+      ? { wodTexto: `Benchmark (${clasicoLabel}): ${clasico.name}\n${clasico.desc}`, estructuraLabel: clasicoLabel }
       : esDiaMono
         ? _crossfitMonoWod(wi, ti, opts, domain, regenSeedWod, cap)
         : _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domain, cap, regenSeedWod);
