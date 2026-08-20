@@ -5125,6 +5125,44 @@ function _crossfitWeekPatterns(wi, daysPerWeek){
   return out;
 }
 
+// Fase 21 (pedido de Luis: "ejemplos de WOD Single... hay algunos clásicos
+// benchmark como Isabel y Grace"): el formato 'Single' (un solo movimiento,
+// para tiempo) hoy SOLO elegía un movimiento al azar del pool del patrón del
+// día — sin ninguna conexión con los benchmarks reales de un solo movimiento
+// que ya existen en BENCHMARK_WODS (Isabel: 30 Snatch; Grace: 30 Clean & Jerk;
+// Karen: 150 Wall Ball; Randy, Hero WOD: 75 Power Snatch). "No pondría muchos":
+// aparece 1 de cada 4 días de formato 'Single' — el resto sigue siendo el
+// movimiento aleatorio de siempre, ligado al patrón del día, como ya estaba.
+// Isabel/Grace/Randy son levantamientos olímpicos técnicos a volumen — se
+// excluyen para principiante (mismo criterio que ya usa Fase 17C con
+// CROSSFIT_17C_EXCLUIR_PRINCIPIANTE); Karen (Wall Ball) es apta para cualquier
+// nivel. Reutiliza el texto/peso YA DEFINIDO en BENCHMARK_WODS — ninguna
+// prescripción nueva, ningún dato duplicado.
+const CROSSFIT_SINGLE_CLASICOS = [
+  { name:'Isabel', cat:'girls', minLevel:'intermedio' },
+  { name:'Grace',  cat:'girls', minLevel:'intermedio' },
+  { name:'Karen',  cat:'girls', minLevel:'principiante' },
+  { name:'Randy',  cat:'hero',  minLevel:'intermedio' },
+];
+function _crossfitSingleClasico(wi, ti, opts){
+  const disponibles = CROSSFIT_SINGLE_CLASICOS.filter(c =>
+    opts.level !== 'principiante' || c.minLevel === 'principiante');
+  if(!disponibles.length) return null;
+  const regenSeed = opts._regenSeed || 0;
+  // Bug encontrado y corregido en simulación antes de aprobar: usar el mismo
+  // _movIdx(wi,ti) para la puerta ("1 de cada 4") y para elegir CUÁL clásico,
+  // solo desplazado por un múltiplo de 4, daba SIEMPRE el mismo residuo mod 4
+  // — Isabel salía el 100% de las veces que se activaba, nunca Grace/Karen/
+  // Randy. Se usa el mezclador de bits (mismo que _crossfitFormatHash) con dos
+  // semillas independientes, para que la puerta y la elección no queden atadas.
+  const seedPuerta = _crossfitMix32((wi*104729 + ti*15485867 + regenSeed*49979687 + 777) >>> 0);
+  if(seedPuerta % 4 !== 0) return null; // 1 de cada 4 días 'Single'
+  const seedEleccion = _crossfitMix32((wi*15485867 + ti*104729 + regenSeed*32452843 + 333221) >>> 0);
+  const elegido = disponibles[seedEleccion % disponibles.length];
+  const bm = BENCHMARK_WODS[elegido.cat].find(w => w.name === elegido.name);
+  return bm ? { ...bm, cat: elegido.cat } : null;
+}
+
 function _crossfitDay(offset){
   return function(wi, isTest, opts, ti){
     // Ajuste 1 (Fase CrossFit 1): el patrón del día sigue rotando según semana+día,
@@ -5272,11 +5310,17 @@ function _crossfitDay(offset){
       lineasFuerza.push(movAccesorio);
     }
 
+    // Fase 21: en día de formato 'Single', 1 de cada 4 veces se usa un clásico
+    // de un solo movimiento (Isabel/Grace/Karen/Randy) en vez del movimiento al
+    // azar de siempre — ver comentario junto a _crossfitSingleClasico().
+    const clasico = (!esDiaMono && wodFormat === 'Single') ? _crossfitSingleClasico(wi, ti, opts) : null;
+
     // Metcon: GENERATE → VALIDATE → REPAIR → DELIVER, con interferencia gradual —
     // SIN CAMBIOS respecto a antes de esta fase (regla aprobada: la selección de
     // movimientos es independiente del formato). En día de motor no aplica: el
     // "metcon" es UNA pieza monoestructural, no varios movimientos combinados.
-    const elegidos = esDiaMono ? [] : _crossfitBuildMetcon(dayPattern, nSlots, wi, ti, opts, domain);
+    // Tampoco aplica si se usa un clásico (Fase 21): el WOD ya viene armado.
+    const elegidos = (esDiaMono || clasico) ? [] : _crossfitBuildMetcon(dayPattern, nSlots, wi, ti, opts, domain);
     // Fase 17A.2: compensar el tiempo real que agregan los componentes extra de
     // Fuerza/Skills — se acorta el WOD proporcionalmente, para que la sesión
     // total siga cuadrando con la duración que el coach eligió, en vez de
@@ -5306,9 +5350,11 @@ function _crossfitDay(offset){
       // es exactamente el mismo bloque que vivía acá adentro, solo que ahora es
       // una función aparte que recibe los mismos parámetros que ya se calculaban
       // en este punto.
-    const { wodTexto, estructuraLabel } = esDiaMono
-      ? _crossfitMonoWod(wi, ti, opts, domain, regenSeedWod, cap)
-      : _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domain, cap, regenSeedWod);
+    const { wodTexto, estructuraLabel } = clasico
+      ? { wodTexto: `Benchmark (Single): ${clasico.name}\n${clasico.desc}`, estructuraLabel: 'Single' }
+      : esDiaMono
+        ? _crossfitMonoWod(wi, ti, opts, domain, regenSeedWod, cap)
+        : _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domain, cap, regenSeedWod);
 
     // Fase 17A/17A.2: Fuerza y Skills conviven siempre como bloques separados y
     // reales (type/legacyField propios) — ya no es fuerza XOR skill según patrón
@@ -5322,16 +5368,18 @@ function _crossfitDay(offset){
       // Un único mkMovement con el WOD completo ya armado — mismo patrón que usan
       // Fuerza/Musculación/Gimnasia (raw = bloque de texto, no una línea por movimiento).
       // Los movimientos elegidos y su nivel de interferencia quedan documentados en notes.
-      wodMovements:[ esDiaMono
-        ? mkMovement({ name: estructuraLabel, pattern:'monostructural', raw: wodTexto })
-        : mkMovement({
-            name: wodFormat + ': ' + elegidos.map(e=>e.name).join(' + '),
-            pattern: 'metcon',
-            notes: elegidos.map(e => `${e.name} (${e.pattern}, interferencia ${
-              (CROSSFIT_INTERFERENCE[dayPattern]?.alto||[]).includes(e.pattern) ? 'ALTA — no debería ocurrir' :
-              (CROSSFIT_INTERFERENCE[dayPattern]?.medio||[]).includes(e.pattern) ? 'media' : 'compatible'})`).join(' · '),
-            raw: wodTexto,
-          })
+      wodMovements:[ clasico
+        ? mkMovement({ name: clasico.name, pattern:'metcon', notes:`Benchmark clásico (${clasico.cat==='girls'?'Girls WOD':'Hero WOD'})`, raw: wodTexto })
+        : esDiaMono
+          ? mkMovement({ name: estructuraLabel, pattern:'monostructural', raw: wodTexto })
+          : mkMovement({
+              name: wodFormat + ': ' + elegidos.map(e=>e.name).join(' + '),
+              pattern: 'metcon',
+              notes: elegidos.map(e => `${e.name} (${e.pattern}, interferencia ${
+                (CROSSFIT_INTERFERENCE[dayPattern]?.alto||[]).includes(e.pattern) ? 'ALTA — no debería ocurrir' :
+                (CROSSFIT_INTERFERENCE[dayPattern]?.medio||[]).includes(e.pattern) ? 'media' : 'compatible'})`).join(' · '),
+              raw: wodTexto,
+            })
       ],
       strType:'strength',
     });
