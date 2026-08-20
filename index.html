@@ -3442,6 +3442,7 @@ function _crossfitIsSkillPrescription(name){
 let _CROSSFIT_SEMANTICS_CACHE = {};
 const CROSSFIT_LOADED_NAME_RE = /Squat|Deadlift|Press|Clean|Snatch|Jerk|Bench|Good Morning/i;
 const CROSSFIT_LOADABLE_PATTERNS = ['squat','hinge','push','pull','olympic'];
+const CROSSFIT_COMBO_MUY_COMPLEJO = new Set(['DB Man-Maker', 'Squat Clean Thruster']);
 
 function _crossfitMovementSemantics(name){
   if(_CROSSFIT_SEMANTICS_CACHE[name]) return _CROSSFIT_SEMANTICS_CACHE[name];
@@ -3468,8 +3469,21 @@ function _crossfitMovementSemantics(name){
     // Hang Squat Clean — los 3 casos confirmados, 0 falsos positivos. No usa regex de
     // nombre ni conteo de raíces.
     const esOlimpicoHuerfano = pattern==='olympic' && m && m.category==='Musculación' && m.contexts.length===0;
+    // Fix (lectura de programa real, pedido de Luis: "qué mejorarías"): de los
+    // 12 movimientos pattern='combo', 10 ya quedaban bien clasificados (Bear
+    // Complex/Curtis P/etc. por ADVANCED; DB Thruster/Devil Press/Thruster/
+    // Medicine Ball Clean correctamente en volumen alto — son de 1-2 fases,
+    // reales en volumen alto en CrossFit). Sólo 2 son genuinamente demasiado
+    // complejos para volumen alto sin estar marcados ADVANCED: DB Man-Maker
+    // (burpee + 2x remo + 2x clean colgado + thruster, 5+ fases en un solo
+    // rep — confirmado en un programa real: "80 DB Man-Maker por tiempo") y
+    // Squat Clean Thruster (clean completo + thruster, 3-4 fases). Lista
+    // curada explícita en vez de una regla general — no hay una señal
+    // automática limpia que distinga esto de Devil Press/Thruster sin
+    // arriesgar falsos positivos.
+    const esComboMuyComplejo = CROSSFIT_COMBO_MUY_COMPLEJO.has(name);
 
-    if(diff==='ADVANCED' || (m && m.category==='Fuerza') || tieneFuerza || esCandidatoMusculacionPesado || esOlimpicoHuerfano){
+    if(diff==='ADVANCED' || (m && m.category==='Fuerza') || tieneFuerza || esCandidatoMusculacionPesado || esOlimpicoHuerfano || esComboMuyComplejo){
       volumeClass = 'VOLUME_PROTECTED';
     } else {
       volumeClass = 'HIGH_VOLUME_ALLOWED';
@@ -5021,8 +5035,15 @@ function _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domai
       // (isSkillPrescription=false, sólo ADVANCED) siguen colapsando exactamente
       // igual que antes — el pedido original de Luis ("30 Muscle-Ups por
       // tiempo") no se toca.
+      // Fix (mismo pedido): CROSSFIT_COMBO_MUY_COMPLEJO (DB Man-Maker, Squat
+      // Clean Thruster) por la misma razón — su cifra protegida (10-16, rango
+      // BEGINNER/INTERMEDIATE, no el 3-6 de ADVANCED que sí calza con "colapsar
+      // rondas") ya es una cantidad razonable de por sí para un movimiento de
+      // 3+ fases; multiplicarla por rondas volvía a dar un total excesivo
+      // ("80 DB Man-Maker" bajaba a "72" — seguía sin ser algo que un coach
+      // programe).
       let lineaFinal = linea;
-      if(_crossfitPrescriptionType(mov) === 'REPS' && !_crossfitIsSkillPrescription(mov) && linea === _crossfitPrescribe(mov, wi, ti+regenSeedWod*5, opts.level, domain)){
+      if(_crossfitPrescriptionType(mov) === 'REPS' && !_crossfitIsSkillPrescription(mov) && !CROSSFIT_COMBO_MUY_COMPLEJO.has(mov) && linea === _crossfitPrescribe(mov, wi, ti+regenSeedWod*5, opts.level, domain)){
         const rounds = _crossfitForTimeRounds(elegidos, opts.level, domain, opts);
         const m = linea.match(/^(\d+)(\s.*)$/);
         if(m) lineaFinal = `${parseInt(m[1],10)*rounds}${m[2]}`;
