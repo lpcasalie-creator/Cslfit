@@ -5223,14 +5223,25 @@ function _crossfitDay(offset){
     // "metcon" es UNA pieza monoestructural, no varios movimientos combinados.
     const elegidos = esDiaMono ? [] : _crossfitBuildMetcon(dayPattern, nSlots, wi, ti, opts, domain);
     // Fase 17A.2: compensar el tiempo real que agregan los componentes extra de
-    // Fuerza/Skills (antes de esta fase siempre había exactamente 1 solo
-    // componente por día) — se acorta el WOD proporcionalmente, para que la
-    // sesión total siga cuadrando con la duración que el coach eligió, en vez de
+    // Fuerza/Skills — se acorta el WOD proporcionalmente, para que la sesión
+    // total siga cuadrando con la duración que el coach eligió, en vez de
     // alargarse silenciosamente. ~4.5min estimados por movimiento extra (aprobado
     // por el coach, validado por simulación antes de esta línea). Mismo cálculo
     // para día de motor: la duración de la pieza monoestructural respeta el
     // mismo presupuesto de tiempo que cualquier otro formato.
-    const movimientosExtra17a2 = Math.max(0, (movsFuerza.length + movsSkill.length) - 1);
+    // Fix (pedido de Luis: "no tantos cortos, menos de 9 minutos"): la base de
+    // comparación seguía en 1, un valor que ya era viejo cuando se escribió esto
+    // (Fase 17A ya había puesto Fuerza+Skills a convivir siempre, y el bloque de
+    // accesorio/prehab de más abajo se agrega también SIEMPRE con duración≠30').
+    // En la práctica, a 45'/60'/90'/120' el total real de movsFuerza+movsSkill
+    // es 3 en TODOS los días (confirmado con dump directo, 16 semanas, 4 días/
+    // semana) — restar desde base 1 descontaba 9' SIEMPRE, sin excepción, y por
+    // eso 'corto' quedaba pegado al piso de 5' y 'medio'/'largo' nunca alcanzaban
+    // su rango previsto (medio 14-17' se veía como 5-9'; largo 20-24' como 11-15').
+    // La base ahora es 3 (el pie estándar real de la sesión), así que el
+    // descuento sólo aplica cuando de verdad se agrega MÁS que eso (ej. 90'/120',
+    // donde el componente nativo escala a 2).
+    const movimientosExtra17a2 = Math.max(0, (movsFuerza.length + movsSkill.length) - 3);
     const capBase = _scaleCap(_domainBaseCap(domain, wi), opts);
     const cap = Math.max(5, capBase - Math.round(movimientosExtra17a2 * 4.5));
     const regenSeedWod = opts._regenSeed || 0;
