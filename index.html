@@ -5287,14 +5287,22 @@ function _crossfitDay(offset){
   return function(wi, isTest, opts, ti){
     // Ajuste 1 (Fase CrossFit 1): el patrón del día sigue rotando según semana+día,
     // pero ahora es un eje TOTALMENTE INDEPENDIENTE del dominio.
+    // Fix (lectura de programa real, semana de test — pedido de Luis: "tú me
+    // dices pero si hay que arreglar eso"): el patrón y el dominio rotan por
+    // semana, así que la semana de test estaba probando lo que le tocara por
+    // rotación en ESA semana — casi nunca el mismo patrón/dominio que la
+    // semana 1 tuvo en ese mismo día. "Comparar con semana 1" quedaba
+    // comparando cosas distintas la mayoría de las veces (ej. bisagra semana 1
+    // vs empuje semana de test, en el mismo Día 3). Se ancla a la semana 0
+    // SOLO cuando isTest — el resto del ciclo no se toca.
     const daysPerWeekPattern = opts.daysPerWeek || 4;
-    const dayPattern = _crossfitWeekPatterns(wi, daysPerWeekPattern)[ti||0];
+    const dayPattern = _crossfitWeekPatterns(isTest ? 0 : wi, daysPerWeekPattern)[ti||0];
     const src = CROSSFIT_STRENGTH_SOURCE[dayPattern];
 
     // Dominio: decidido por la distribución semanal explícita, NO por el patrón.
     // opts.daysPerWeek lo fija autoGenerateProgram() antes de generar (ver más abajo).
     const daysPerWeek = opts.daysPerWeek || 4;
-    const domain = _crossfitWeeklyDomains(daysPerWeek, wi)[ti % daysPerWeek] || 'corto';
+    const domain = _crossfitWeeklyDomains(daysPerWeek, isTest ? 0 : wi)[ti % daysPerWeek] || 'corto';
     // Fase CrossFit 12: el formato ya NO es fijo. Se elige primero (semilla propia,
     // independiente de la de patrón), y de ahí sale nSlots — antes nSlots dependía
     // sólo del dominio; ahora depende de formato+dominio.
@@ -5304,18 +5312,43 @@ function _crossfitDay(offset){
 
     if(isTest){
       const regenSeedTest = opts._regenSeed || 0;
+      // Fix (mismo pedido): Skills quedaba completamente vacío toda la semana
+      // de test, sin excepción — una semana entera sin ningún estímulo de
+      // gimnasia. Un movimiento liviano del mismo pool de siempre, encuadrado
+      // como evaluación técnica (no como progresión de volumen — por eso NO
+      // usa _crossfit17a2PrescribirSkill, que sigue avanzando con `wi`).
+      // srcKey='skill' (no un key propio) a propósito: es el que consulta
+      // CROSSFIT_BEGINNER_SUB_LOCAL para sustituir movimientos ADVANCED en
+      // principiante — usar _pickSafe() solo, sin pasar por _crossfit17a2Pick(),
+      // se saltaba esa defensa (confirmado con test: "Muscle-up drill
+      // (transición)" — de PRINCIPIANTE_EXCLUDE — se colaba en principiante).
+      const poolSkillTest = _crossfitSkillPoolAmplio(opts);
+      const movSkillTest = _crossfit17a2Pick(poolSkillTest, 0, ti, opts, 'skill');
+      const skillTestLine = `${movSkillTest} — evalúa tu técnica (sin cronómetro)`;
+      const skillMovementsTest = [ mkMovement({name: movSkillTest, pattern:'skill', notes:'Evaluación técnica', raw: skillTestLine}) ];
+
       if(dayPattern === 'monostructural'){
         // Test propio para día de motor — el fallback genérico (test de sentadilla)
         // no tiene sentido si el patrón del día es aeróbico.
-        const modalidad = _pick(CROSSFIT_MONO_MODALIDADES, wi + (ti||0) + regenSeedTest*7);
+        // Fix: modalidad y patrón/dominio (arriba) ahora anclados a semana 0 —
+        // antes la modalidad variaba con la semana de test (wi), así que podía
+        // tocar "1000m Row" en semana 1 y comparar contra "1000m Ski Erg" en la
+        // de test, algo que nunca fue realmente comparable.
+        const modalidad = _pick(CROSSFIT_MONO_MODALIDADES, (ti||0) + regenSeedTest*7);
         const distancia = domain==='largo' ? '5000m' : domain==='medio' ? '2000m' : '1000m';
-        const lF = `Test: ${distancia} ${modalidad} — mejor tiempo (comparar con semana 1)`;
+        const lF = `Test: ${distancia} ${modalidad} — mejor tiempo posible (repetir semana 1, comparar)`;
         const outT = { _pattern: dayPattern, _domain: domain };
+        // Fix: antes el mismo test aparecía DUPLICADO en Fuerza y en WOD (con
+        // dos redacciones distintas del mismo "Test: 1000m Ski Erg") — confuso,
+        // no queda claro si se hace una vez o dos. Un día de motor no tiene
+        // realmente un componente de "Fuerza" separado del test — el test ES
+        // la sesión completa, va sólo en WOD (mismo criterio que ya usan los
+        // días de motor normales, donde el foco real vive en el WOD).
         outT._session = _buildSession(outT, {
           wi, ti, isTest:true, opts, focus:'crossfit', pattern:dayPattern, domain,
-          strMovements:[ mkMovement({name:`${distancia} ${modalidad}`, pattern:dayPattern, notes:'Test aeróbico', raw:lF}) ],
-          wodMovements:[ mkMovement({name:'Test aeróbico de referencia', pattern:'monostructural',
-            raw:`Test: ${distancia} ${modalidad} — mejor tiempo posible (repetir semana 1, comparar)`}) ],
+          strMovements:[],
+          skillMovements: skillMovementsTest,
+          wodMovements:[ mkMovement({name:'Test aeróbico de referencia', pattern:'monostructural', raw: lF}) ],
           strType:'strength',
         });
         return outT;
@@ -5323,12 +5356,23 @@ function _crossfitDay(offset){
       const pool = GEN_POOLS[src.pool][src.key][opts.equipment];
       const ref = _pickSafe(pool, 0, opts, src.key, ti + regenSeedTest*19);
       const lF = `Test: ${ref} — máximo esfuerzo técnico (comparar con semana 1)`;
+      // Fix: "AMRAP 10' (repetir semana 1, comparar rondas)" era el MISMO texto
+      // genérico todos los días de test, sin decir con qué movimientos — nunca
+      // guardaba lo que realmente fue el WOD de la semana 1 para este mismo
+      // día. autoGenerateProgram() ahora captura el texto real del WOD de la
+      // semana 1 por día (opts._semana1Wod) — si existe, se repite tal cual
+      // (mismo formato, mismos movimientos, de verdad comparable). Si no
+      // existe (ej. "Regenerar día" sobre un día de test suelto, sin pasar por
+      // el ciclo completo), se mantiene el fallback genérico de siempre.
+      const wodRaw = opts._semana1Wod
+        ? `Repite el WOD de la semana 1 (mismo formato y movimientos) y compara tu marca:\n${opts._semana1Wod}`
+        : `AMRAP ${_scaleCap(10,opts)}' (repetir semana 1, comparar rondas)`;
       const outT = { _pattern: dayPattern, _domain: domain };
       outT._session = _buildSession(outT, {
         wi, ti, isTest:true, opts, focus:'crossfit', pattern:dayPattern, domain,
         strMovements:[ mkMovement({name:ref, pattern:dayPattern, notes:'Test técnico', raw:lF}) ],
-        wodMovements:[ mkMovement({name:'AMRAP de referencia (repetir semana 1, comparar rondas)', pattern:'metcon',
-          raw:`AMRAP ${_scaleCap(10,opts)}' (repetir semana 1, comparar rondas)`}) ],
+        skillMovements: skillMovementsTest,
+        wodMovements:[ mkMovement({name:'WOD de referencia (repetir semana 1, comparar)', pattern:'metcon', raw: wodRaw}) ],
         strType:'strength',
       });
       return outT;
@@ -5980,6 +6024,12 @@ function autoGenerateProgram(){
       _crossfit17cPosiciones[pos.wiGlobal] = { ti: pos.ti, benchmark: bm };
     }
   }
+  // Fix (semana de test, pedido de Luis: "tú me dices pero si hay que
+  // arreglar eso"): ti -> texto real del WOD de la semana 1, para que la
+  // semana de test pueda repetirlo tal cual en vez de un genérico "AMRAP 10'"
+  // que nunca decía con qué movimientos. Sólo CrossFit — se llena generando la
+  // semana 0 más abajo, se lee generando la semana de test.
+  const _crossfit22Semana1Wod = {};
 
   for(let wi=0; wi<weeksCount; wi++){
     const isTest = (wi === weeksCount-1);
@@ -5997,6 +6047,7 @@ function autoGenerateProgram(){
       // funciones que las leen ni siquiera existen fuera de CrossFit).
       opts._prevNSlots = (focus==='crossfit') ? _crossfit18PrevNSlots : null;
       opts._prevFamiliaEquipo = (focus==='crossfit') ? _crossfit18PrevFamilia : null;
+      opts._semana1Wod = (focus==='crossfit' && isTest) ? _crossfit22Semana1Wod[ti] : null;
       // Fase 16C: continuidad entre bloques — SOLO afecta a CrossFit, SOLO si
       // opts._prevWodSignatures fue provisto explícitamente, y NUNCA en la semana
       // de test (isTest usa una plantilla de referencia distinta, nunca se simuló
@@ -6039,6 +6090,14 @@ function autoGenerateProgram(){
           wodBlock.movements[0].notes = `Benchmark (${etiqueta})`;
           day._session.wod = `${etiqueta}: ${bm.name}\n${bm.desc}`;
         }
+      }
+      // Fix (semana de test): capturar el WOD REAL de la semana 1 por día, ya
+      // con el reemplazo de benchmark de arriba aplicado si correspondía —
+      // eso es lo que el alumno realmente hizo esa semana. Se lee más arriba
+      // (opts._semana1Wod) al generar el mismo día en la semana de test.
+      if(focus==='crossfit' && wi===0 && day._session){
+        const wodBlockS1 = day._session.blocks.find(b=>b.type==='metcon');
+        if(wodBlockS1 && wodBlockS1.movements[0]) _crossfit22Semana1Wod[ti] = wodBlockS1.movements[0].raw;
       }
       // Fase 17B: capturar los movimientos del WOD del ÚLTIMO día de la semana,
       // solo CrossFit — se usan para sembrar la semana siguiente (arriba). Si ese
