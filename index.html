@@ -5011,8 +5011,18 @@ function _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domai
       // Si _crossfitVolumeBasedPrescribe delegó en _crossfitPrescribe (movimiento no
       // apto para volumen alto, ej. Muscle-up), esa cifra es "por serie" — se
       // multiplica por las rondas que hubiera tenido para armar el total real.
+      // Fix (lectura de programa real, pedido de Luis: "qué mejorarías"): esto
+      // también atrapaba movimientos de HABILIDAD (Wall Walk, Handstand Walk —
+      // _crossfitIsSkillPrescription) cuyo número pequeño NO es "por serie de
+      // una estructura de rondas", es la cifra final a propósito (misma lógica
+      // que ya usa CROSSFIT_SKILL_REPS_BY_LEVEL: "calidad técnica, no volumen").
+      // Confirmado en un programa real: "30 Wall Walk por tiempo" — 5 (la cifra
+      // correcta, técnica) multiplicado por 6 rondas. Bar Muscle-up/Rope Climb
+      // (isSkillPrescription=false, sólo ADVANCED) siguen colapsando exactamente
+      // igual que antes — el pedido original de Luis ("30 Muscle-Ups por
+      // tiempo") no se toca.
       let lineaFinal = linea;
-      if(_crossfitPrescriptionType(mov) === 'REPS' && linea === _crossfitPrescribe(mov, wi, ti+regenSeedWod*5, opts.level, domain)){
+      if(_crossfitPrescriptionType(mov) === 'REPS' && !_crossfitIsSkillPrescription(mov) && linea === _crossfitPrescribe(mov, wi, ti+regenSeedWod*5, opts.level, domain)){
         const rounds = _crossfitForTimeRounds(elegidos, opts.level, domain, opts);
         const m = linea.match(/^(\d+)(\s.*)$/);
         if(m) lineaFinal = `${parseInt(m[1],10)*rounds}${m[2]}`;
