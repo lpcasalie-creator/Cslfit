@@ -5338,7 +5338,24 @@ function _crossfitDay(offset){
         if(dayPattern==='olympic' && i===1){ poolUsar = GEN_POOLS.fuerza.olympic_acc[opts.equipment]; keyUsar = 'olympic_acc'; }
         const m = _crossfit17a2Pick(poolUsar, wi, ti + i*7 + regenSeedDia*19, opts, keyUsar);
         movsFuerza.push(m);
+        // Fix (lectura de programa real, pedido de Luis: "qué mejorarías"):
+        // 'pull' es el único patrón nativo que sale de GEN_POOLS.gimnasia (los
+        // demás — squat/hinge/push/olympic — salen de GEN_POOLS.fuerza, barra
+        // real). El pool de pull mezcla "Weighted Pull-up" (genuinamente
+        // cargable a %1RM) con variantes 100% técnicas (Strict/Kipping/
+        // Butterfly/Chest-to-Bar/L-sit Pull-up) que _crossfit17a2PrescribirRectas
+        // igual prescribía "@ X%" — confirmado en un programa real generado:
+        // "Butterfly Pull-up 3x4 @ 74%", algo que ningún coach escribiría (no
+        // existe un 1RM de Butterfly Pull-up). Se corta por nombre ("Weighted"
+        // es la señal ya usada en el catálogo para la variante cargable) en vez
+        // de una lista fija — cubre también sustitutos de BEGINNER_SUB que caen
+        // fuera del pool de 6 nombres. Reutiliza _crossfit17a2PrescribirSkill
+        // (ya construida y validada para movimientos técnicos basados en reps),
+        // en vez de inventar una tercera fórmula de prescripción.
+        const esPullCargable = dayPattern==='pull' && /^Weighted\b/.test(m);
+        const esPullTecnico = dayPattern==='pull' && !esPullCargable;
         if(dayPattern==='olympic' && i===0) lineasFuerza.push(_crossfit17a2PrescribirOlimpicoNativo(m, opts, wi));
+        else if(esPullTecnico) lineasFuerza.push(_crossfit17a2PrescribirSkill(m, opts, wi));
         else lineasFuerza.push(_crossfit17a2PrescribirRectas(m, opts, wi, i===0?'4-6':'5-6'));
       }
       // Agregado: Skill fija en 1, pool AMPLIO (Fase 18 Fix 5 — antes narrow,
