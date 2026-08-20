@@ -3849,7 +3849,12 @@ const CROSSFIT_FORMAT_BY_DOMAIN = {
   // el mismo pipeline de 'For Time', solo con más movimientos por ronda —
   // vive en medio porque calza con la duración (más movimientos por ronda sin
   // que el WOD se dispare de tiempo).
-  medio: ['AMRAP', 'EMOM', 'For Time', 'For Time 4'],
+  // Fix (pedido de Luis: "EMOM se repite demasiado"): se sacó 'For Time' de acá
+  // — compartía nSlots=2 con AMRAP (ver CROSSFIT_FORMAT_SLOTS), lo que dejaba a
+  // EMOM solo en su propio valor de nSlots y con el doble de probabilidad que
+  // AMRAP/For Time cada uno. AMRAP ya cubre el mismo nSlots=2 en este dominio —
+  // 'For Time 4' sigue cubriendo la identidad "For Time" con su propio nSlots.
+  medio: ['AMRAP', 'EMOM', 'For Time 4'],
   // Fase 14B: 'Chipper' repetido = ponderación 1:2:1 (AMRAP:Chipper:EMOM) dentro de
   // largo, usando el mismo mecanismo modular ya existente en _crossfitPickFormat()
   // — sin tocar esa función ni crear un sistema de pesos nuevo. Auditado con 120
@@ -4248,11 +4253,18 @@ function _crossfit18DominantFamilia(names){
 
 const CROSSFIT_FORMAT_SLOTS = {
   'AMRAP':    { corto:2, medio:2, largo:3 },
-  'For Time': { corto:2, medio:2 },              // For Time no vive en dominio largo
-  // Fase 18 (Fix 7): EMOM en corto subido de 2 a 3 — mismo valor que ya usa en
-  // medio/largo. Sin esto, agregar EMOM a la lista de corto no rompía el techo
-  // de nSlots=2 (solo agregaba variedad de NOMBRE, no de estructura real).
-  'EMOM':     { corto:3, medio:3, largo:3 },
+  // Fix (pedido de Luis: "EMOM se repite demasiado"): antes For Time compartía
+  // nSlots=2 con AMRAP en 'corto' — eso dejaba a EMOM (solo en su propio valor)
+  // con el doble de probabilidad que cada uno de los otros dos. Ahora los 4
+  // formatos de 'corto' (Single/AMRAP/For Time/EMOM) tienen 4 valores de nSlots
+  // DISTINTOS — cada uno con la misma probabilidad, sin compartir bucket con
+  // nadie. 'For Time' ya no vive en 'medio' (ver CROSSFIT_FORMAT_BY_DOMAIN),
+  // así que esa entrada se saca de acá.
+  'For Time': { corto:3 },
+  // Fase 18 (Fix 7): EMOM en corto subido de 2 a 3 originalmente — mismo valor
+  // que ya usa en medio/largo. Ahora sube a 4 en 'corto' específicamente (ver
+  // fix de arriba), para que los 4 formatos de ese dominio no compartan bucket.
+  'EMOM':     { corto:4, medio:3, largo:3 },
   'Chipper':  { largo:5 },                        // Chipper sólo vive en dominio largo
   // Fase 18 (Fix 7): formato nuevo, 1 movimiento — "día de un solo elemento" de
   // Glassman (Element Priority). Vive solo en corto: es coherente con duraciones
@@ -4323,8 +4335,8 @@ function _crossfitPickFormat(domain, wi, ti, offset, opts){
   // Fase 18 (Fix 2): señal SUAVE anti-repetición de nSlots día a día — si el día
   // anterior tuvo N movimientos en el metcon, se excluyen del pool las opciones de
   // formato que producirían el mismo N en ESTE dominio. Degrada con gracia: si la
-  // exclusión deja el pool vacío (ej. dominio 'corto', donde AMRAP y For Time dan
-  // ambos nSlots=2 — no hay alternativa posible), se usa el pool original sin filtrar.
+  // exclusión deja el pool vacío (ej. dominio 'largo', donde sólo hay 2 valores de
+  // nSlots posibles — no siempre hay alternativa), se usa el pool original sin filtrar.
   // Nunca es un bloqueo duro, solo desplaza la probabilidad — mismo criterio que el
   // resto del generador (GENERATE→VALIDATE→REPAIR, degradación en vez de fallo).
   if(opts && opts._prevNSlots != null){
