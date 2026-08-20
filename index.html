@@ -5165,7 +5165,8 @@ const CROSSFIT_TRIPLET_CLASICOS = [
 // independiente por higiene, sin depender de esa exclusión mutua.
 function _crossfitPickClasico(pool, wi, ti, opts, sal){
   const disponibles = pool.filter(c =>
-    opts.level !== 'principiante' || c.minLevel === 'principiante');
+    (opts.level !== 'principiante' || c.minLevel === 'principiante') &&
+    (!c.equipoMin || c.equipoMin === opts.equipment || opts.equipment === 'completo'));
   if(!disponibles.length) return null;
   const regenSeed = opts._regenSeed || 0;
   // Bug encontrado y corregido en simulación antes de aprobar (Single): usar el
@@ -5178,11 +5179,33 @@ function _crossfitPickClasico(pool, wi, ti, opts, sal){
   if(seedPuerta % 4 !== 0) return null; // 1 de cada 4 días de este formato
   const seedEleccion = _crossfitMix32((wi*15485867 + ti*104729 + regenSeed*32452843 + 333221 + sal) >>> 0);
   const elegido = disponibles[seedEleccion % disponibles.length];
+  // Los originales de Chipper (ver más abajo) traen su propio `desc` — no
+  // existen en BENCHMARK_WODS (esa lista alimenta Scores, donde el alumno
+  // compara su tiempo contra un benchmark real; mezclar un WOD inventado ahí
+  // sería engañoso). Single/Triplet sí son benchmarks reales, se buscan ahí.
+  if(elegido.desc) return { name: elegido.name, desc: elegido.desc, cat: elegido.cat || null };
   const bm = BENCHMARK_WODS[elegido.cat].find(w => w.name === elegido.name);
   return bm ? { ...bm, cat: elegido.cat } : null;
 }
 function _crossfitSingleClasico(wi, ti, opts){ return _crossfitPickClasico(CROSSFIT_SINGLE_CLASICOS, wi, ti, opts, 0); }
 function _crossfitTripletClasico(wi, ti, opts){ return _crossfitPickClasico(CROSSFIT_TRIPLET_CLASICOS, wi, ti, opts, 999983); }
+
+// Fase 21c (pedido de Luis: "no sé si hay chippers clásicos, pero se podrían
+// crear"): a diferencia de Isabel/Grace/Kelly/Eva/DT/Badger (benchmarks REALES
+// de CrossFit), no existe un chipper reconocido de exactamente 5 movimientos
+// en una sola pasada — los chippers famosos reales (Filthy Fifty, etc.) tienen
+// 10+ movimientos y no calzan con la definición de 'Chipper' de este motor
+// (nSlots=5, sólo en dominio largo). Se crean 2 WODs ORIGINALES propios de
+// CSL-Fit — a propósito separados de BENCHMARK_WODS (ver nota en
+// _crossfitPickClasico) y con su propia etiqueta de texto ("WOD de la casa"),
+// nunca "Benchmark", para no hacerlos pasar por algo que no son. 'El Fondo' es
+// 100% peso corporal/kettlebell (apto para cualquier nivel/equipo); 'La Cima'
+// lleva Hang Power Clean con barra (requiere equipo completo, desde intermedio).
+const CSL_CHIPPER_ORIGINALES = [
+  { name:'El Fondo', desc:'50 Air Squat, 40 KB Swing (Russian) 24/16kg, 30 Sit-up, 20 Push-up, 400m Run', minLevel:'principiante' },
+  { name:'La Cima',  desc:'30 Box Jump-Over 61/50cm, 25 Toes-to-Bar, 20 Hang Power Clean 43/30kg, 15 Chest-to-Bar Pull-up, 400m Run', minLevel:'intermedio', equipoMin:'completo' },
+];
+function _crossfitChipperOriginal(wi, ti, opts){ return _crossfitPickClasico(CSL_CHIPPER_ORIGINALES, wi, ti, opts, 555555); }
 
 function _crossfitDay(offset){
   return function(wi, isTest, opts, ti){
@@ -5338,11 +5361,15 @@ function _crossfitDay(offset){
     // acá), lo mismo con Kelly/Eva/DT/Badger. El resto de las veces sigue
     // siendo el movimiento/combinación al azar de siempre — ver comentario
     // junto a _crossfitPickClasico().
+    // 'Chipper' (Fase 21c) usa WODs ORIGINALES propios de CSL-Fit, no
+    // benchmarks reales — ver nota junto a CSL_CHIPPER_ORIGINALES.
     const clasicoLabel = (!esDiaMono && wodFormat === 'Single') ? 'Single'
       : (!esDiaMono && nSlots === 3 && (wodFormat === 'AMRAP' || wodFormat === 'For Time')) ? 'Triplet'
+      : (!esDiaMono && wodFormat === 'Chipper') ? 'Chipper'
       : null;
     const clasico = clasicoLabel === 'Single' ? _crossfitSingleClasico(wi, ti, opts)
       : clasicoLabel === 'Triplet' ? _crossfitTripletClasico(wi, ti, opts)
+      : clasicoLabel === 'Chipper' ? _crossfitChipperOriginal(wi, ti, opts)
       : null;
 
     // Metcon: GENERATE → VALIDATE → REPAIR → DELIVER, con interferencia gradual —
@@ -5381,7 +5408,7 @@ function _crossfitDay(offset){
       // una función aparte que recibe los mismos parámetros que ya se calculaban
       // en este punto.
     const { wodTexto, estructuraLabel } = clasico
-      ? { wodTexto: `Benchmark (${clasicoLabel}): ${clasico.name}\n${clasico.desc}`, estructuraLabel: clasicoLabel }
+      ? { wodTexto: `${clasicoLabel === 'Chipper' ? 'WOD de la casa' : 'Benchmark'} (${clasicoLabel}): ${clasico.name}\n${clasico.desc}`, estructuraLabel: clasicoLabel }
       : esDiaMono
         ? _crossfitMonoWod(wi, ti, opts, domain, regenSeedWod, cap)
         : _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domain, cap, regenSeedWod);
@@ -5399,7 +5426,7 @@ function _crossfitDay(offset){
       // Fuerza/Musculación/Gimnasia (raw = bloque de texto, no una línea por movimiento).
       // Los movimientos elegidos y su nivel de interferencia quedan documentados en notes.
       wodMovements:[ clasico
-        ? mkMovement({ name: clasico.name, pattern:'metcon', notes:`Benchmark clásico (${clasico.cat==='girls'?'Girls WOD':'Hero WOD'})`, raw: wodTexto })
+        ? mkMovement({ name: clasico.name, pattern:'metcon', notes: clasico.cat ? `Benchmark clásico (${clasico.cat==='girls'?'Girls WOD':'Hero WOD'})` : 'WOD de la casa (CSL-Fit)', raw: wodTexto })
         : esDiaMono
           ? mkMovement({ name: estructuraLabel, pattern:'monostructural', raw: wodTexto })
           : mkMovement({
