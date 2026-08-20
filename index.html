@@ -5691,6 +5691,38 @@ const COOLDOWN_TEXT = {
   musculacion: "Estiramiento del grupo muscular trabajado 3-5'",
   general: "3-5' caminar + estiramiento general de tren superior e inferior",
 };
+// Fix (auditoría de presupuesto de tiempo, pregunta de Luis "qué faltaría
+// afinar"): WARMUP_BY_PATTERN/COOLDOWN_BY_PATTERN sólo tienen claves con
+// sufijo (push_vertical/push_horizontal/pull_vertical/pull_horizontal/
+// olympic_main) — las que usa el motor de Fuerza. El patrón de CrossFit es más
+// grueso (squat/hinge/push/pull/olympic/skill/monostructural, sin sufijo), así
+// que sólo 'squat' y 'hinge' coincidían por accidente; 'push'/'pull'/'olympic'/
+// 'skill'/'monostructural' caían SIEMPRE al genérico WARMUP_TEXT.general —
+// confirmado con dump: un día de Olímpico nunca recibía el Burgener Warm-up
+// específico, un día de Skill nunca recibía movilidad de muñeca/hombro.
+// Tabla separada (no se tocan WARMUP_BY_PATTERN/WARMUP_TEXT compartidos) porque
+// esas mismas claves bare 'push'/'pull'/'skill'/'monostructural' TAMBIÉN las
+// usan Gimnasia y Musculación con su propio fallback ya correcto
+// (WARMUP_TEXT.gimnasia/musculacion) — agregarlas ahí habría pisado ese
+// comportamiento en los otros 5 enfoques sin que nadie lo pidiera.
+const CROSSFIT_WARMUP_BY_PATTERN = {
+  squat: WARMUP_BY_PATTERN.squat,
+  hinge: WARMUP_BY_PATTERN.hinge,
+  olympic: WARMUP_BY_PATTERN.olympic_main,
+  push: "5' cardio suave · movilidad de hombro y torácica (wall slides, banda: rotación externa) · 2x8 Push-up lento + 2 aproximaciones",
+  pull: "5' cardio suave · activación escapular (Scap Pull, Ring Row lento) · banda: face pull · 2 series de aproximación",
+  skill: WARMUP_TEXT.gimnasia,
+  monostructural: WARMUP_TEXT.cardio,
+};
+const CROSSFIT_COOLDOWN_BY_PATTERN = {
+  squat: COOLDOWN_BY_PATTERN.squat,
+  hinge: COOLDOWN_BY_PATTERN.hinge,
+  olympic: COOLDOWN_BY_PATTERN.olympic_main,
+  push: "Movilidad de hombro y torácica 3-4' · estiramiento de pectoral en marco de puerta 2x30s/lado",
+  pull: "Colgarse relajado 2x20s · estiramiento de dorsal y trapecio 3'",
+  skill: COOLDOWN_TEXT.gimnasia,
+  monostructural: COOLDOWN_TEXT.cardio,
+};
 const ENERGY_PATHWAY = {
   corto: 'Fosfágeno / Glucolítico rápido',
   medio: 'Glucolítico',
@@ -5709,8 +5741,13 @@ function _addWarmupCooldown(day, focus, domain){
   if(!sess.blocks.some(b=>(b.legacyField||'fuerza') === 'wod')) return day;
 
   const p = day._pattern;
-  const warmup   = (p && WARMUP_BY_PATTERN[p])   || WARMUP_TEXT[focus]   || WARMUP_TEXT.general;
-  const cooldown = (p && COOLDOWN_BY_PATTERN[p]) || COOLDOWN_TEXT[focus] || COOLDOWN_TEXT.general;
+  // Fix: sólo CrossFit usa la tabla propia (ver comentario junto a
+  // CROSSFIT_WARMUP_BY_PATTERN) — los otros 5 enfoques siguen exactamente
+  // igual que antes, mismas tablas compartidas.
+  const warmupPorPatron = focus === 'crossfit' ? CROSSFIT_WARMUP_BY_PATTERN : WARMUP_BY_PATTERN;
+  const cooldownPorPatron = focus === 'crossfit' ? CROSSFIT_COOLDOWN_BY_PATTERN : COOLDOWN_BY_PATTERN;
+  const warmup   = (p && warmupPorPatron[p])   || WARMUP_TEXT[focus]   || WARMUP_TEXT.general;
+  const cooldown = (p && cooldownPorPatron[p]) || COOLDOWN_TEXT[focus] || COOLDOWN_TEXT.general;
   const energyLine = domain ? `Vía energética: ${ENERGY_PATHWAY[domain]} · Pacing: ${PACING_TEXT[domain]}\n\n` : '';
 
   const wuBlock = mkBlock('warmup', 'Warm-up', {
