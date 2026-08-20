@@ -4811,10 +4811,25 @@ function _crossfitWeeklyDomains(daysPerWeek, wi){
 // Tabla aprobada por el coach: el componente NATIVO del día (el que corresponde a
 // su patrón rotativo) escala en cantidad de movimientos según duración de sesión;
 // el componente AGREGADO (el que completa lo que falta) queda fijo en 1.
+// Fix (auditoría de presupuesto de tiempo, pedido de Luis: "combinación" de
+// más volumen de Fuerza/Skills + WOD algo más largo, repartido parejo, para
+// que 90'/120' realmente llenen la clase). Antes 90' y 120' tenían EXACTAMENTE
+// el mismo conteo (2 y 2) — 120' no le sacaba ningún provecho real a esos 30'
+// extra en Fuerza/Skills. 120' ahora sube a 3 nativos de Fuerza.
 const CROSSFIT_CONTEO_POR_DURACION = {
   '30': {fuerza:1, skill:1}, '45': {fuerza:1, skill:1}, '60': {fuerza:1, skill:1},
-  '90': {fuerza:2, skill:2}, '120':{fuerza:2, skill:2},
+  '90': {fuerza:2, skill:2}, '120':{fuerza:3, skill:3},
 };
+// El pie estándar REAL de componentes por duración — nativo(s) + agregado(s) +
+// accesorio (1 con duración≠30, 2 con 120') — usado por movimientosExtra17a2
+// para que el descuento de tiempo del WOD sólo aplique a un extra genuino
+// sobre lo que la propia duración ya decidió agregar, nunca al volumen base.
+const CROSSFIT_BASELINE_COMPONENTES = { '30':2, '45':3, '60':3, '90':4, '120':6 };
+// Bono de cap SOLO para CrossFit — no toca DURATION_FACTOR (compartido con los
+// otros 5 enfoques) para no afectarlos. Repartido junto con el ajuste de
+// arriba: ni todo el tiempo extra de 90'/120' se va a Fuerza/Skills, ni todo
+// al WOD.
+const CROSSFIT_DURATION_BONUS = { '90': 1.4, '120': 1.75 };
 
 // Familia de skill, derivada del nombre — no es una lista manual de clasificación
 // nueva, mismo espíritu que _crossfitIsCompoundMovement() (14C.1): substring sobre
@@ -5352,6 +5367,17 @@ function _crossfitDay(offset){
       const movAccesorio = _pickDedup(SKILL_POOLS[catAccesorio], wi, ti + 199 + regenSeedDia*19, opts, 'accesorio_'+catAccesorio);
       movsFuerza.push(movAccesorio);
       lineasFuerza.push(movAccesorio);
+      // Fix (auditoría de presupuesto de tiempo): a 120' un solo accesorio fijo
+      // (igual que a 45'/60'/90') no aportaba nada al volumen extra que sí pide
+      // esa duración — segundo accesorio de una categoría DISTINTA (nunca la
+      // misma dos veces el mismo día).
+      if(opts.duration === '120'){
+        const catsRestantes = catsAccesorio.filter(c=>c!==catAccesorio);
+        const catAccesorio2 = _pick(catsRestantes.length ? catsRestantes : catsAccesorio, wi + (ti||0) + 401);
+        const movAccesorio2 = _pickDedup(SKILL_POOLS[catAccesorio2], wi, ti + 599 + regenSeedDia*19, opts, 'accesorio_'+catAccesorio2);
+        movsFuerza.push(movAccesorio2);
+        lineasFuerza.push(movAccesorio2);
+      }
     }
 
     // Fase 21/21b: en día de formato 'Single', 1 de cada 4 veces se usa un
@@ -5389,17 +5415,22 @@ function _crossfitDay(offset){
     // comparación seguía en 1, un valor que ya era viejo cuando se escribió esto
     // (Fase 17A ya había puesto Fuerza+Skills a convivir siempre, y el bloque de
     // accesorio/prehab de más abajo se agrega también SIEMPRE con duración≠30').
-    // En la práctica, a 45'/60'/90'/120' el total real de movsFuerza+movsSkill
-    // es 3 en TODOS los días (confirmado con dump directo, 16 semanas, 4 días/
-    // semana) — restar desde base 1 descontaba 9' SIEMPRE, sin excepción, y por
-    // eso 'corto' quedaba pegado al piso de 5' y 'medio'/'largo' nunca alcanzaban
-    // su rango previsto (medio 14-17' se veía como 5-9'; largo 20-24' como 11-15').
-    // La base ahora es 3 (el pie estándar real de la sesión), así que el
-    // descuento sólo aplica cuando de verdad se agrega MÁS que eso (ej. 90'/120',
-    // donde el componente nativo escala a 2).
-    const movimientosExtra17a2 = Math.max(0, (movsFuerza.length + movsSkill.length) - 3);
-    const capBase = _scaleCap(_domainBaseCap(domain, wi), opts);
-    const cap = Math.max(5, capBase - Math.round(movimientosExtra17a2 * 4.5));
+    // Restar desde base 1 descontaba de más SIEMPRE, sin excepción.
+    // Fix (auditoría de presupuesto de tiempo, pedido de Luis: "combinación" de
+    // más volumen + WOD algo más largo para 90'/120'): el pie estándar de la
+    // sesión ya NO es el mismo para toda duración — a 120' ahora hay más
+    // componentes de Fuerza/Skills a propósito (ver CROSSFIT_CONTEO_POR_DURACION
+    // y el segundo accesorio de 120' más abajo). La base de comparación pasa a
+    // ser POR DURACIÓN — el pie estándar real de cada una — para que el
+    // descuento sólo aplique a un extra genuino, nunca al volumen que la propia
+    // duración ya decidió agregar.
+    const movimientosExtra17a2 = Math.max(0, (movsFuerza.length + movsSkill.length) - (CROSSFIT_BASELINE_COMPONENTES[opts.duration] || 3));
+    // Fix (mismo pedido): el WOD también crece un poco más en 90'/120' — antes
+    // 90' y 120' usaban el mismo DURATION_FACTOR compartido con los otros 5
+    // enfoques (Fuerza/Gimnasia/Cardio/Musculación); un bono SOLO para CrossFit,
+    // sin tocar DURATION_FACTOR, para no afectar a los demás enfoques.
+    const capBase = _scaleCap(_domainBaseCap(domain, wi), opts) * (CROSSFIT_DURATION_BONUS[opts.duration] || 1);
+    const cap = Math.max(5, Math.round(capBase - movimientosExtra17a2 * 4.5));
     const regenSeedWod = opts._regenSeed || 0;
 
     // Fase 18 (Fix 11): extraído a _crossfitBuildWodTexto() para reutilizarlo
