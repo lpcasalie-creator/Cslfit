@@ -2319,8 +2319,28 @@ const RESTRICTION_EXCLUDE = {
   rodilla: ["DB Bulgarian Split Squat","DB Front Rack Reverse Lunge","DB Front Foot Elevated Split Squat","DB Box Step-up","DB Box Step-up con carga","DB Walking Lunge con carga","DB Front Rack Lunge","DB Walking Lunge","DB Step-up con carga","Walking Lunge (barra)","Front Rack Step-up","Overhead Lunge","Zercher Step-up","Bulgarian Split Squat (barra)","DB Deficit Reverse Lunge","DB Single-Leg Box Squat","DB Reverse Lunge con pausa","DB Lateral Lunge","Barbell Reverse Lunge","Front Rack Walking Lunge","DB Sumo Goblet Squat","Hack Squat estilo barra","Front Rack Lunge","Squat Snatch","Squat Clean + Split Jerk",
     "Walking Lunge","Reverse Lunge","DB Reverse Lunge","DB Curtsy Lunge","DB Split Squat","Bulgarian Split Squat","Box Step-up","Pistol (Single-Leg Squat)","Curtis P (Power Clean + Lunge + Push Press)",
     "DB Cossack Squat","Cossack Squat 3x10/lado","Sissy Squat 3x12","Sissy Squat asistido 3x10","Hack Squat"],
-  hombro: ["DB Seated Strict Press","DB Arnold Press","Push Press","Strict Press","Push Jerk","HSPU contra muro","HSPU kipping","Handstand Push-up progresión","Muscle-up drill (transición)","Freestanding HS práctica","Muscle-up en banco","Handstand Hold contra muro","Wall Walk parcial","Handstand Hold + march","Pike Walk","Ring Dip","Bar Dip","Ring Dip con pausa","Ring Dip tempo lento","Dip en banco","Dip con pausa","Dip tempo lento","Dip a una pierna","Strict Pull-up","Kipping Pull-up","Chest-to-Bar Pull-up","Butterfly Pull-up","Overhead Press","DB Tempo Floor Press","Single-Arm DB Press","Pause Bench Press","Split Jerk","Wall Walk completo","HS Shoulder Taps","Muscle-up asistido en anillas","Kipping HSPU drill","Weighted Dip","Ring Dip asistido a una mano","Weighted Pull-up","L-sit Pull-up","Deficit HSPU","Strict HSPU","DB Squeeze Press","Spoto Press","Snatch","Power Snatch","Squat Snatch","Clean and Jerk","Power Clean + Push Jerk","Squat Clean + Split Jerk","DB Snatch","DB Snatch alternado","KB Snatch","DB Hang Clean + Press","KB Clean + Press","Snatch Balance","Overhead Squat","Muscle Snatch","DB Overhead Squat (asistido)","KB Overhead Carry técnica"],
-  espalda: ["DB RDL","Single-Leg DB RDL","KB Deadlift","DB Stiff-Leg Deadlift","Deadlift","Sumo Deadlift","Deficit Deadlift","Snatch-Grip Deadlift","Overhead Lunge","Zercher Step-up","DB Good Morning","Suitcase Deadlift DB","Pause Deadlift","Romanian Deadlift","Single-Leg DB Deadlift","Snatch Pull","Clean Pull","Halting Snatch Deadlift","DB RDL a Snatch técnica"],
+  // Fix (mismo tipo de auditoría que rodilla): "Snatch"/"Power Snatch" ya
+  // excluidos, pero sus variantes HANG (mismo riesgo real — recepción por
+  // encima de la cabeza) no. "Power Jerk" (impulso por encima de la cabeza,
+  // misma familia que Push/Split Jerk, ya excluidos) tampoco estaba. Behind-
+  // the-Neck (posición de máximo riesgo de pinzamiento de hombro reconocida en
+  // cualquier programa de fuerza) no existía en la lista en absoluto. NO se
+  // agregan Clean/Power Clean/Hang Clean lisos (recepción al frente, no por
+  // encima) — el propio RESTRICTION_DEFAULT.hombro.olympic_main ya ofrece
+  // "Hang Power Clean sin jerk" como sustituto SEGURO; excluirlo también
+  // contradiría esa decisión ya tomada.
+  hombro: ["DB Seated Strict Press","DB Arnold Press","Push Press","Strict Press","Push Jerk","HSPU contra muro","HSPU kipping","Handstand Push-up progresión","Muscle-up drill (transición)","Freestanding HS práctica","Muscle-up en banco","Handstand Hold contra muro","Wall Walk parcial","Handstand Hold + march","Pike Walk","Ring Dip","Bar Dip","Ring Dip con pausa","Ring Dip tempo lento","Dip en banco","Dip con pausa","Dip tempo lento","Dip a una pierna","Strict Pull-up","Kipping Pull-up","Chest-to-Bar Pull-up","Butterfly Pull-up","Overhead Press","DB Tempo Floor Press","Single-Arm DB Press","Pause Bench Press","Split Jerk","Wall Walk completo","HS Shoulder Taps","Muscle-up asistido en anillas","Kipping HSPU drill","Weighted Dip","Ring Dip asistido a una mano","Weighted Pull-up","L-sit Pull-up","Deficit HSPU","Strict HSPU","DB Squeeze Press","Spoto Press","Snatch","Power Snatch","Squat Snatch","Clean and Jerk","Power Clean + Push Jerk","Squat Clean + Split Jerk","DB Snatch","DB Snatch alternado","KB Snatch","DB Hang Clean + Press","KB Clean + Press","Snatch Balance","Overhead Squat","Muscle Snatch","DB Overhead Squat (asistido)","KB Overhead Carry técnica",
+    "Hang Snatch","Hang Power Snatch","Power Jerk","Behind-the-Neck Snatch/Jerk","Behind-the-Neck Press"],
+  // Fix (mismo tipo de auditoría): "Deadlift"/"Romanian Deadlift"/"Sumo
+  // Deadlift" ya excluidos, pero "Stiff-Legged Deadlift" (mismo movimiento,
+  // nombre distinto) y "Sumo Deadlift High Pull" (deadlift + tirón, mismo
+  // riesgo lumbar) no. "DB Good Morning" ya excluido, la versión con barra
+  // (más carga real) no. KB Swing es un hinge balístico bajo carga repetida —
+  // motivo común real para evitarlo con lumbago agudo. NO se agregan Hip
+  // Thrust/Glute Bridge/Reverse Hyper/Back Extension liviana — son
+  // justamente las alternativas SEGURAS que ya ofrece RESTRICTION_DEFAULT.
+  espalda: ["DB RDL","Single-Leg DB RDL","KB Deadlift","DB Stiff-Leg Deadlift","Deadlift","Sumo Deadlift","Deficit Deadlift","Snatch-Grip Deadlift","Overhead Lunge","Zercher Step-up","DB Good Morning","Suitcase Deadlift DB","Pause Deadlift","Romanian Deadlift","Single-Leg DB Deadlift","Snatch Pull","Clean Pull","Halting Snatch Deadlift","DB RDL a Snatch técnica",
+    "Good Morning","Stiff-Legged Deadlift","Sumo Deadlift High Pull","KB Swing (Russian)","KB Swing (American)","KB Swings"],
 };
 // Alternativas seguras por lesión — pools que rotan por semana, no un texto fijo,
 // para que el alumno lesionado también tenga variedad real
