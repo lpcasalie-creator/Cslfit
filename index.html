@@ -3328,6 +3328,12 @@ const CROSSFIT_POOL_EXCLUDED = new Set(['Swimming',
   'Standing Calf Raise 4x12',
   'Straight-Arm Pulldown',
   'Tricep Pushdown 3x12',
+  // Fase 22 (feedback de Luis sobre la simulación de 1 año): KB Turkish Get-up es
+  // trabajo de control/estabilidad, pensado para hacerse lento y de forma estricta —
+  // nunca "for time" ni dentro de un AMRAP/EMOM. Técnicamente tenía pattern:'core'
+  // asignado, así que el motor de WOD lo tomaba como candidato de metcon igual que
+  // Toes-to-Bar o GHD Sit-up. Se excluye solo del pool de WOD de CrossFit.
+  'KB Turkish Get-up',
 ]);
 
 function _crossfitPoolByPattern(){
