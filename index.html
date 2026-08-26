@@ -4941,16 +4941,41 @@ function _crossfit17a2FamiliaSkill(name){
 // Pick de un movimiento CON la defensa de principiante existente (Fase 7 A2) —
 // factoriza lo que antes era código único dentro de _crossfitDay(), ahora
 // reutilizable para múltiples movimientos por día.
+// Fase 24: hash simple de srcKey ('skill','squat','pull_horizontal', etc.) para
+// mezclarlo junto a wi/ti — solo aporta un ingrediente al seed, la propiedad de
+// avalancha real la da _crossfitMix32 después, igual que ya hace _crossfitFormatHash.
+function _crossfit17a2SrcKeyId(key){
+  let h = 0;
+  const s = key || '';
+  for(let i=0; i<s.length; i++) h = (Math.imul(h, 131) + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
 function _crossfit17a2Pick(pool, wi, ti, opts, srcKey){
   // Bug reportado por Luis: Fuerza/Skills se repetían en días seguidos. Causa:
   // esta función usaba _pickSafe (sin memoria) en vez de _pickDedup (con memoria
   // semanal vía opts._used) — el mismo mecanismo anti-repetición que el metcon
   // ya usa desde Fase 17B, pero que Fuerza/Skills (agregado en 17A.2/18) nunca
   // consultaba ni alimentaba.
-  let mov = _pickDedup(pool, wi, ti, opts, srcKey);
+  //
+  // Fase 24 (bug reportado por Luis: "las skills se repiten, cada 2 semanas y 3
+  // días" — ejemplo real: Ring Row, después Strict Pull-up, después Kipping
+  // Pull-up, semana tras semana). Causa raíz: TODOS los call-sites de esta
+  // función pasan "ti + una constante" (99, ti*7, etc.) — sumar una constante no
+  // rompe la linealidad de _movIdx(wi,ti)=wi+ti*2 (uso compartido con los otros 5
+  // enfoques, no se toca). Semana a semana, para el mismo patrón de día, el
+  // índice efectivo avanzaba de a 1 en 1 dentro del pool — un paseo secuencial
+  // disfrazado de selección variada. Mismo diagnóstico y misma solución que la
+  // resonancia de formato (Fase CrossFit 11/18): se mezclan wi/ti/srcKey con
+  // _crossfitMix32 ANTES de delegar en _pickDedup, y se le pasa ti=0 para que
+  // _movIdx no vuelva a introducir linealidad sobre el valor ya mezclado.
+  const wiMixed = _crossfitMix32((wi*2654435761 + ti*40503 + _crossfit17a2SrcKeyId(srcKey)*97) >>> 0);
+  let mov = _pickDedup(pool, wiMixed, 0, opts, srcKey);
   if(opts.level==='principiante' && _crossfitDifficulty(mov)==='ADVANCED' && CROSSFIT_BEGINNER_SUB_LOCAL[srcKey]){
     const subPool = CROSSFIT_BEGINNER_SUB_LOCAL[srcKey];
-    mov = Array.isArray(subPool) ? subPool[_movIdx(wi, ti) % subPool.length] : subPool;
+    // Mismo wiMixed de arriba — antes usaba _movIdx(wi,ti) crudo acá también,
+    // mismo riesgo de paseo lineal específicamente para nivel principiante.
+    mov = Array.isArray(subPool) ? subPool[wiMixed % subPool.length] : subPool;
     if(opts._used) opts._used.add(mov);
   }
   return mov;
