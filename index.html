@@ -6383,19 +6383,31 @@ const BLOCK_CATEGORY_LABELS = {
 
 function _setLastField(el){ _lastFocusedField = el; }
 
-// Pedido de Luis: los campos Fuerza/Skills/WOD del constructor semanal quedan
-// chicos a propósito (para que quepan varios días uno al lado del otro en la
-// franja horizontal) — pero eso corta el texto largo de un WOD real y obliga
-// a hacer scroll adentro de una caja minúscula. Al tocar el campo, crece para
-// mostrar todo lo escrito; al salir, vuelve a su tamaño chico de siempre.
+// Pedido de Luis: las tarjetas de día del constructor semanal quedan chicas
+// a propósito (para que quepan varias una al lado de la otra en la franja
+// horizontal) — pero eso corta el texto largo de un WOD real y obliga a leer
+// con scroll adentro de una caja minúscula. Al tocar CUALQUIER campo del día
+// (Fuerza, Skills o WOD), se agranda LA TARJETA COMPLETA — más ancha y con
+// los 3 campos a su alto real — para leer el día entero cómodo; al salir de
+// la tarjeta (foco a otro día o afuera), vuelve a su tamaño chico de siempre.
 function _autoGrowField(el){
-  _setLastField(el);
-  if(!el.dataset.collapsedHeight) el.dataset.collapsedHeight = getComputedStyle(el).height;
   el.style.height = 'auto';
   el.style.height = el.scrollHeight + 'px';
 }
-function _shrinkField(el){
-  if(el.dataset.collapsedHeight) el.style.height = el.dataset.collapsedHeight;
+const CROSSFIT_DAY_CARD_FLEX_COLAPSADO = '0 0 150px'; // mismo valor fijo del template en generateProgWeeks()
+function _expandDayCard(cardEl){
+  _setLastField(document.activeElement);
+  cardEl.style.flex = '0 0 260px';
+  cardEl.style.zIndex = '5';
+  cardEl.querySelectorAll('textarea').forEach(_autoGrowField);
+}
+function _collapseDayCardMaybe(evt, cardEl){
+  // focusout dispara también al moverse ENTRE campos del mismo día (Fuerza→Skills)
+  // — relatedTarget sigue dentro de cardEl en ese caso, no hay que achicar todavía.
+  if(evt.relatedTarget && cardEl.contains(evt.relatedTarget)) return;
+  cardEl.style.flex = CROSSFIT_DAY_CARD_FLEX_COLAPSADO;
+  cardEl.style.zIndex = '';
+  cardEl.querySelectorAll('textarea').forEach(t=>{ t.style.height = ''; });
 }
 
 async function loadBlocks(){
@@ -6507,14 +6519,15 @@ function generateProgWeeks(){
     html += `<h3 style="margin-top:16px;">Semana ${w}</h3>
       <div style="display:flex; overflow-x:auto; gap:8px; padding-bottom:6px;">`;
     DAY_NAMES.forEach((d,di)=>{
-      html += `<div style="flex:0 0 150px; background:#141414; border:1px solid var(--border); border-radius:8px; padding:8px;">
+      html += `<div id="day_w${w}_d${di}_card" style="flex:0 0 150px; background:#141414; border:1px solid var(--border); border-radius:8px; padding:8px; transition:flex-basis .15s;"
+        onfocusin="_expandDayCard(this)" onfocusout="_collapseDayCardMaybe(event, this)">
         <div style="font-family:'Barlow Condensed',sans-serif; font-weight:700; color:var(--lime); font-size:13px; margin-bottom:6px; text-transform:uppercase;">${d.slice(0,3)}</div>
         <label style="margin-top:0;">Fuerza</label>
-        <textarea id="day_w${w}_d${di}_fuerza" style="min-height:50px; font-size:12px;" placeholder="Ej: Back Squat 5x5" onfocus="_autoGrowField(this)" oninput="_autoGrowField(this)" onblur="_shrinkField(this)"></textarea>
+        <textarea id="day_w${w}_d${di}_fuerza" style="min-height:50px; font-size:12px;" placeholder="Ej: Back Squat 5x5" oninput="_autoGrowField(this)"></textarea>
         <label>Skills</label>
-        <textarea id="day_w${w}_d${di}_skills" style="min-height:50px; font-size:12px;" placeholder="Ej: HSPU práctica" onfocus="_autoGrowField(this)" oninput="_autoGrowField(this)" onblur="_shrinkField(this)"></textarea>
+        <textarea id="day_w${w}_d${di}_skills" style="min-height:50px; font-size:12px;" placeholder="Ej: HSPU práctica" oninput="_autoGrowField(this)"></textarea>
         <label>WOD</label>
-        <textarea id="day_w${w}_d${di}_wod" style="min-height:60px; font-size:12px;" placeholder="Ej: AMRAP 12'..." onfocus="_autoGrowField(this)" oninput="_autoGrowField(this)" onblur="_shrinkField(this)"></textarea>
+        <textarea id="day_w${w}_d${di}_wod" style="min-height:60px; font-size:12px;" placeholder="Ej: AMRAP 12'..." oninput="_autoGrowField(this)"></textarea>
         <button id="day_w${w}_d${di}_regen" class="btn small secondary" style="display:none; width:100%; margin-top:6px; font-size:11px;"
           onclick="regenerateCrossfitDay(${w-1}, ${di})">↻ Regenerar día</button>
       </div>`;
