@@ -5542,12 +5542,25 @@ function _crossfitDay(offset){
         else if(esPullTecnico) lineasFuerza.push(_crossfit17a2PrescribirSkill(m, opts, wi));
         else lineasFuerza.push(_crossfit17a2PrescribirRectas(m, opts, wi, i===0?'4-6':'5-6'));
       }
-      // Agregado: Skill fija en 1, pool AMPLIO (Fase 18 Fix 5 — antes narrow,
+      // Agregado: Skill — 1 normalmente, pool AMPLIO (Fase 18 Fix 5 — antes narrow,
       // GEN_POOLS.gimnasia.skill[equipment], mismo bug que la rama nativa arriba).
+      // Fix (pedido de Luis, ejemplo real de 60'): 2 en dominio 'corto' — el WOD
+      // corto (8-12') deja tiempo real libre que hoy se perdía; mismo mecanismo
+      // de selección con familia sin repetir que ya usa el skill nativo arriba.
       const poolSkillAgregado = _crossfitSkillPoolAmplio(opts);
-      const movSkillAgregado = _crossfit17a2Pick(poolSkillAgregado, wi, ti + 99 + regenSeedDia*19, opts, 'skill');
-      movsSkill.push(movSkillAgregado);
-      lineasSkill.push(_crossfit17a2PrescribirSkill(movSkillAgregado, opts, wi));
+      // 30' no entra al bono de 'corto' — mismo criterio que el bloque de
+      // accesorio de abajo (opts.duration !== '30'): a 30' ya está todo el
+      // tiempo comprometido, no hay minutos libres que repartir.
+      const nSkillAgregado = (domain === 'corto' && opts.duration !== '30') ? 2 : 1;
+      const familiasSkillAgregado = new Set();
+      let intentoSkillAgregado = 0;
+      while(movsSkill.length < nSkillAgregado && intentoSkillAgregado < 20){
+        const m = _crossfit17a2Pick(poolSkillAgregado, wi, ti + 99 + intentoSkillAgregado*7 + regenSeedDia*19, opts, 'skill');
+        const fam = _crossfit17a2FamiliaSkill(m);
+        if(!familiasSkillAgregado.has(fam) || movsSkill.length===0){ movsSkill.push(m); familiasSkillAgregado.add(fam); }
+        intentoSkillAgregado++;
+      }
+      movsSkill.forEach(m=>lineasSkill.push(_crossfit17a2PrescribirSkill(m, opts, wi)));
     }
 
     // Accesorio/prehab — pedido de Luis (core, unilateral, salud de hombro). Reutiliza
@@ -5572,7 +5585,11 @@ function _crossfitDay(offset){
       // (igual que a 45'/60'/90') no aportaba nada al volumen extra que sí pide
       // esa duración — segundo accesorio de una categoría DISTINTA (nunca la
       // misma dos veces el mismo día).
-      if(opts.duration === '120'){
+      // Fix (pedido de Luis, ejemplo real de 60'): en dominio 'corto' el WOD es
+      // deliberadamente breve (8-12'), y esos minutos que no ocupa el WOD se
+      // perdían en vez de repartirse en más fuerza/skill — igual síntoma que
+      // 120', misma solución: un segundo accesorio.
+      if(opts.duration === '120' || domain === 'corto'){
         const catsRestantes = catsAccesorio.filter(c=>c!==catAccesorio);
         const catAccesorio2 = _pick(catsRestantes.length ? catsRestantes : catsAccesorio, wi + (ti||0) + 401);
         const movAccesorio2 = _pickDedup(SKILL_POOLS[catAccesorio2], wi, ti + 599 + regenSeedDia*19, opts, 'accesorio_'+catAccesorio2);
@@ -5625,7 +5642,14 @@ function _crossfitDay(offset){
     // ser POR DURACIÓN — el pie estándar real de cada una — para que el
     // descuento sólo aplique a un extra genuino, nunca al volumen que la propia
     // duración ya decidió agregar.
-    const movimientosExtra17a2 = Math.max(0, (movsFuerza.length + movsSkill.length) - (CROSSFIT_BASELINE_COMPONENTES[opts.duration] || 3));
+    // Fix (pedido de Luis, ejemplo real de 60': "si el WOD es corto se puede
+    // hacer más fuerza o más skills"): el pie estándar de 'corto' sube en 2 —
+    // el segundo accesorio y el segundo skill-agregado que se agregan a propósito
+    // más abajo/arriba para ese dominio — mismo criterio que ya existe para 120'
+    // (comentario de arriba): el descuento solo debe aplicar a un extra genuino
+    // sobre lo que el propio dominio ya decidió agregar, nunca a ese volumen.
+    const baselineEfectivo17a2 = (CROSSFIT_BASELINE_COMPONENTES[opts.duration] || 3) + (domain === 'corto' && opts.duration !== '30' ? 2 : 0);
+    const movimientosExtra17a2 = Math.max(0, (movsFuerza.length + movsSkill.length) - baselineEfectivo17a2);
     // Fix (mismo pedido): el WOD también crece un poco más en 90'/120' — antes
     // 90' y 120' usaban el mismo DURATION_FACTOR compartido con los otros 5
     // enfoques (Fuerza/Gimnasia/Cardio/Musculación); un bono SOLO para CrossFit,
