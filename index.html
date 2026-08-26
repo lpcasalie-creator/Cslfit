@@ -661,10 +661,12 @@
         </div>
         <div id="dayOrderPickers" style="margin:10px 0; padding:10px; background:#141414; border-radius:8px; border:1px solid var(--border);"></div>
         <label>Equipamiento</label>
-        <select id="genEquipment">
+        <select id="genEquipment" onchange="renderEquipmentCustomPicker()">
           <option value="completo" selected>Completo (barra, rig, máquinas)</option>
           <option value="limitado">Limitado (mancuernas/kettlebells)</option>
+          <option value="personalizado">Personalizado (elegir implementos)</option>
         </select>
+        <div id="equipmentCustomPicker" style="display:none; margin:8px 0 0; padding:10px; background:#141414; border-radius:8px; border:1px solid var(--border);"></div>
         <div class="grid2">
           <div><label>Nivel del alumno</label>
             <select id="genLevel">
@@ -4273,6 +4275,14 @@ const CROSSFIT_FAMILIA_EQUIPAMIENTO = {
   'Weighted Pull-up': 'peso_corporal',
   'Yates Row': 'barra',
   'Zercher Step-up': 'barra',
+  // Fase 23 (equipamiento personalizado): los 3 movimientos agregados en Fase 18
+  // Fix 9 (ver buildMovementCatalog) nunca tuvieron entrada acá — caían al fallback
+  // 'otro' de _crossfitFamiliaEquipo(). Los tres solo necesitan una barra de dominadas
+  // o un cajón, igual que el resto de la gimnasia de tracción/empuje ya clasificada
+  // como 'peso_corporal'.
+  'Hip-to-Bar Pull-up': 'peso_corporal',
+  'Russian Dip': 'peso_corporal',
+  'Box Dip': 'peso_corporal',
 };
 
 // Fase 18 (Fix 3): lookup con fallback defensivo — un movimiento nuevo agregado al
@@ -4281,6 +4291,38 @@ const CROSSFIT_FAMILIA_EQUIPAMIENTO = {
 // familia real, así que nunca se excluye a sí mismo por error).
 function _crossfitFamiliaEquipo(name){
   return CROSSFIT_FAMILIA_EQUIPAMIENTO[name] || 'otro';
+}
+
+// Fase 23 (equipamiento personalizado, pedido de Luis): reutiliza la misma taxonomía
+// de CROSSFIT_FAMILIA_EQUIPAMIENTO (hoy solo usada para la señal anti-repetición de
+// Fase 18) para dejar que el coach elija exactamente qué implementos tiene el box,
+// en vez de solo "completo"/"limitado". 'peso_corporal' y 'sin_implemento' quedan
+// fuera de la lista de checkboxes — ningún box tiene cero espacio para el propio
+// cuerpo, así que siempre están disponibles (ver _crossfitEquipoDisponible()).
+const CROSSFIT_EQUIPMENT_CATEGORIES = [
+  { id:'barra', label:'Barra y discos' },
+  { id:'mancuerna', label:'Mancuernas' },
+  { id:'kettlebell', label:'Kettlebells' },
+  { id:'anillas', label:'Anillas' },
+  { id:'cable_banda', label:'Cable / banda' },
+  { id:'maquina_cardio', label:'Máquinas de cardio (remo/bici/ski)' },
+  { id:'maquina_musculacion', label:'Máquinas de musculación' },
+  { id:'maquina_ghd', label:'GHD' },
+  { id:'carry_sled', label:'Sled / carga' },
+  { id:'cuerda', label:'Cuerda (climbing)' },
+  { id:'cuerda_saltar', label:'Cuerda de saltar' },
+  { id:'balon_medicinal', label:'Balón medicinal' },
+];
+const CROSSFIT_EQUIPO_SIEMPRE_DISPONIBLE = new Set(['peso_corporal', 'sin_implemento']);
+
+// true si `name` puede usarse con el set de implementos elegido en modo "personalizado".
+// opts.equipmentSet es un Set<string> de ids de CROSSFIT_EQUIPMENT_CATEGORIES, o null/
+// undefined cuando el coach usa "completo"/"limitado" (ese camino no toca esta función).
+function _crossfitEquipoDisponible(name, opts){
+  if(!opts.equipmentSet) return true;
+  const fam = _crossfitFamiliaEquipo(name);
+  if(CROSSFIT_EQUIPO_SIEMPRE_DISPONIBLE.has(fam)) return true;
+  return opts.equipmentSet.has(fam);
 }
 
 // Fase 18 (Fix 3): familia DOMINANTE de una lista de nombres de movimientos — la
@@ -4536,6 +4578,11 @@ function _crossfitPickMovement(pattern, wi, ti, opts){
     if(/^(Pause|Tempo)\s/i.test(name)) return false;
     const eq = getMovement(name).equipment;
     if(eq && opts.equipment && eq !== opts.equipment) return false; // filtro suave de equipo
+    // Fase 23: equipamiento "personalizado" — filtro DURO por implemento real
+    // disponible (a diferencia del filtro suave completo/limitado de arriba, que
+    // sigue corriendo igual cuando opts.equipmentSet no existe). Si el coach no
+    // marcó "barra", ningún movimiento de barra puede salir en el WOD, sin excepción.
+    if(!_crossfitEquipoDisponible(name, opts)) return false;
     if(opts.restriction && opts.restriction!=='ninguna'){
       if(hasRestriction(name, opts.restriction)) return false;
       // Defensa adicional (Fase CrossFit 5, hallazgo de pruebas): 3 pares de nombres
@@ -4940,6 +4987,7 @@ function _crossfitSkillPoolAmplio(opts){
   return candidatos.filter(name=>{
     const eq = getMovement(name).equipment;
     if(eq && opts.equipment && eq !== opts.equipment) return false;
+    if(!_crossfitEquipoDisponible(name, opts)) return false; // Fase 23: equipamiento personalizado
     if(opts.restriction && opts.restriction!=='ninguna'){
       if(hasRestriction(name, opts.restriction)) return false;
       const base = name.match(/^(.+?)\s*\([^)]+\)$/);
@@ -5647,6 +5695,33 @@ const PATTERN_NAME = {
   legs:'piernas', posterior:'cadena posterior', full_body:'full body',
 };
 
+// Fase 23 (equipamiento personalizado): estado en memoria, no persistido — mismo
+// criterio que _lastGenConfig/_crossfitRegenCounter, variables de sesión ya
+// existentes para el formulario del generador. "Ir agregando" (pedido de Luis)
+// se resuelve dejando el Set vivo entre clicks mientras el formulario sigue abierto,
+// sin tener que re-marcar todo cada vez que se toca un checkbox.
+let _crossfitCustomEquipment = new Set();
+
+function renderEquipmentCustomPicker(){
+  const val = document.getElementById('genEquipment').value;
+  const wrap = document.getElementById('equipmentCustomPicker');
+  if(val !== 'personalizado'){ wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  wrap.innerHTML = '<p class="muted" style="font-size:12px; margin-bottom:8px;">Marca los implementos con los que cuenta el alumno — peso corporal siempre está disponible, no hace falta marcarlo.</p>'
+    + CROSSFIT_EQUIPMENT_CATEGORIES.map(c => `
+      <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:6px;">
+        <input type="checkbox" data-equip-id="${c.id}" style="width:auto; accent-color:var(--lime);"
+          ${_crossfitCustomEquipment.has(c.id) ? 'checked' : ''}
+          onchange="_crossfitToggleEquipment('${c.id}', this.checked)">
+        ${c.label}
+      </label>`).join('');
+}
+
+function _crossfitToggleEquipment(id, checked){
+  if(checked) _crossfitCustomEquipment.add(id);
+  else _crossfitCustomEquipment.delete(id);
+}
+
 function renderDayOrderPickers(){
   const focus = document.getElementById('genFocus').value;
   const daysPerWeek = parseInt(document.getElementById('genDays').value);
@@ -5962,8 +6037,22 @@ function autoGenerateProgram(){
   const wantSaturdayLargo = focus === 'crossfit'
     && document.getElementById('genSaturdayLargo').checked
     && !DAY_INDEX_MAP[daysPerWeek].includes(5);
+  const equipmentVal = document.getElementById('genEquipment').value;
+  // Fase 23 (equipamiento personalizado): "personalizado" no es una tercera clave
+  // válida donde el resto del generador espera exactamente 'completo'/'limitado'
+  // (GEN_POOLS.fuerza[patrón][opts.equipment] indexa directo por ese string — hoy
+  // el bloque de Fuerza nativo de CrossFit y el generador de Fuerza/Musculación/etc.
+  // usan listas curadas de solo 2 buckets, no un filtro por implemento). Mientras
+  // esas listas no se dividan por implemento, "personalizado" cae al bucket más
+  // parecido para ESOS puntos (con barra marcada → completo, si no → limitado) y
+  // además activa equipmentSet, el filtro DURO por implemento real que sí aplica
+  // hoy al WOD y al pool de Skills (_crossfitPickMovement / _crossfitSkillPoolAmplio).
+  const equipmentSet = equipmentVal === 'personalizado' ? new Set(_crossfitCustomEquipment) : null;
   const opts = {
-    equipment: document.getElementById('genEquipment').value,
+    equipment: equipmentVal === 'personalizado'
+      ? (equipmentSet.has('barra') ? 'completo' : 'limitado')
+      : equipmentVal,
+    equipmentSet,
     level: document.getElementById('genLevel').value,
     duration: document.getElementById('genDuration').value,
     goal: document.getElementById('genGoal').value,
