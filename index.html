@@ -5383,14 +5383,29 @@ function _crossfitDay(offset){
     // comparando cosas distintas la mayoría de las veces (ej. bisagra semana 1
     // vs empuje semana de test, en el mismo Día 3). Se ancla a la semana 0
     // SOLO cuando isTest — el resto del ciclo no se toca.
+    // Fase 25 (hallazgo de la auditoría de 1 año: "la semana 1 de cualquier
+    // programa nuevo sale siempre idéntica"): _crossfitWeekPatterns()/
+    // _crossfitWeeklyDomains() son funciones puras de (wi, daysPerWeek) — cada
+    // programa nuevo vuelve a arrancar en wi=0, así que dos programas
+    // independientes con los mismos días/semana calculan EXACTAMENTE lo mismo.
+    // wiVista solo desplaza qué patrón/dominio le toca a cada día — wi (el real,
+    // usado más abajo para %1RM/RPE/andamiaje/deload) no se toca. Por defecto
+    // opts._cicloWeekOffset es 0 (cero cambio de comportamiento); solo es
+    // distinto de 0 cuando el coach generó este programa con "Continuar desde
+    // programa anterior" (ver autoGenerateProgram). El offset se suma ANTES de
+    // aplicar isTest?0 (no después) — así la semana de test sigue calculando
+    // exactamente lo mismo que la semana 1 de ESTE programa (0+offset en ambos
+    // casos), en vez de comparar contra un wi=0 sin desplazar que ya no
+    // corresponde a la semana 1 real de este ciclo.
+    const wiVista = (isTest ? 0 : wi) + (opts._cicloWeekOffset || 0);
     const daysPerWeekPattern = opts.daysPerWeek || 4;
-    const dayPattern = _crossfitWeekPatterns(isTest ? 0 : wi, daysPerWeekPattern)[ti||0];
+    const dayPattern = _crossfitWeekPatterns(wiVista, daysPerWeekPattern)[ti||0];
     const src = CROSSFIT_STRENGTH_SOURCE[dayPattern];
 
     // Dominio: decidido por la distribución semanal explícita, NO por el patrón.
     // opts.daysPerWeek lo fija autoGenerateProgram() antes de generar (ver más abajo).
     const daysPerWeek = opts.daysPerWeek || 4;
-    const domain = _crossfitWeeklyDomains(daysPerWeek, isTest ? 0 : wi)[ti % daysPerWeek] || 'corto';
+    const domain = _crossfitWeeklyDomains(daysPerWeek, wiVista)[ti % daysPerWeek] || 'corto';
     // Fase CrossFit 12: el formato ya NO es fijo. Se elige primero (semilla propia,
     // independiente de la de patrón), y de ahí sale nSlots — antes nSlots dependía
     // sólo del dominio; ahora depende de formato+dominio.
@@ -6124,6 +6139,15 @@ function autoGenerateProgram(){
   if(focus==='crossfit' && _prevWodSignaturesCache && _prevWodSignaturesCache.length){
     opts._prevWodSignatures = _prevWodSignaturesCache;
   }
+  // Fase 25 (hallazgo de la auditoría de 1 año): mismo gancho de "Continuar
+  // desde" — si el programa anterior tenía N semanas, este arranca la rotación
+  // de patrón/dominio y el bloque de benchmarks como si continuara en la
+  // semana/bloque N, en vez de reiniciar en 0. Sin "Continuar desde"
+  // seleccionado, _prevProgramWeeksCache queda en 0 y el comportamiento es
+  // idéntico al de siempre.
+  const cicloWeekOffset = (focus==='crossfit') ? _prevProgramWeeksCache : 0;
+  const cicloBlockOffset = Math.floor(cicloWeekOffset / 4);
+  if(cicloWeekOffset) opts._cicloWeekOffset = cicloWeekOffset;
   _generatedSessions = {};   // caché de sesiones v3 de esta generación
   _generatedFingerprint = {}; // huella del texto generado, para detectar edición manual
   const templates = [];
@@ -6172,8 +6196,8 @@ function autoGenerateProgram(){
   if(focus==='crossfit'){
     const nBloques = Math.floor(weeksCount / 4);
     for(let b=0; b<nBloques; b++){
-      const pos = _crossfit17cElegirPosicion(b, templates.length, weeksCount);
-      const bm = _crossfit17cElegirBenchmark(b, opts.level);
+      const pos = _crossfit17cElegirPosicion(b, templates.length, weeksCount, cicloBlockOffset);
+      const bm = _crossfit17cElegirBenchmark(b, opts.level, cicloBlockOffset);
       _crossfit17cPosiciones[pos.wiGlobal] = { ti: pos.ti, benchmark: bm };
     }
   }
@@ -6745,6 +6769,13 @@ async function refreshAssignment(){
 // simulación — lo único que faltaba era este gancho: dejar que el coach elija
 // qué programa anterior usar como contexto antes de generar el bloque nuevo.
 let _prevWodSignaturesCache = null;
+// Fase 25: cuántas semanas tenía el programa elegido en "Continuar desde" — se usa
+// para desplazar la rotación de patrón/dominio y el bloque de benchmarks del
+// programa NUEVO (ver autoGenerateProgram/_crossfitDay), así dos ciclos
+// consecutivos del mismo alumno no vuelven a arrancar idénticos en blockIndex=0/
+// wi=0. Independiente de _prevWodSignaturesCache: no depende de que el programa
+// anterior tenga `sessions` reconocibles, solo de su columna `weeks`.
+let _prevProgramWeeksCache = 0;
 
 async function populateContinueFromSelect(){
   // No existe un campo top-level que distinga "programa de CrossFit" de otros —
@@ -6762,22 +6793,32 @@ async function populateContinueFromSelect(){
 async function onContinueFromChange(){
   const programId = document.getElementById('genContinueFrom').value;
   const msg = document.getElementById('genContinueFromMsg');
-  if(!programId){ _prevWodSignaturesCache = null; msg.textContent = ''; return; }
+  if(!programId){ _prevWodSignaturesCache = null; _prevProgramWeeksCache = 0; msg.textContent = ''; return; }
   msg.textContent = 'Cargando...';
-  const { data: prog, error } = await sb.from('programs').select('sessions').eq('id', programId).single();
-  if(error || !prog || !prog.sessions){
+  const { data: prog, error } = await sb.from('programs').select('sessions, weeks').eq('id', programId).single();
+  if(error || !prog){
     _prevWodSignaturesCache = null;
+    _prevProgramWeeksCache = 0;
     msg.textContent = 'No se pudo cargar ese programa (puede que no tenga estructura guardada).';
+    return;
+  }
+  // Independiente de las firmas de WOD de abajo: solo necesita el número de
+  // semanas del programa anterior, que siempre existe (columna propia, no
+  // depende de `sessions`).
+  _prevProgramWeeksCache = parseInt(prog.weeks) || 0;
+  if(!prog.sessions){
+    _prevWodSignaturesCache = null;
+    msg.textContent = 'No se pudo cargar la estructura de ese programa — la rotación de patrón/benchmark igual se ajusta, pero el WOD no busca estímulos distintos.';
     return;
   }
   const firmas = _crossfitSummarizePreviousBlock(prog.sessions);
   if(!firmas.length){
     _prevWodSignaturesCache = null;
-    msg.textContent = 'Ese programa no tiene WODs de CrossFit reconocibles — se genera como bloque independiente.';
+    msg.textContent = 'Ese programa no tiene WODs de CrossFit reconocibles — la rotación de patrón/benchmark igual se ajusta, pero el WOD se genera como bloque independiente.';
     return;
   }
   _prevWodSignaturesCache = firmas;
-  msg.textContent = `${firmas.length} WODs de referencia cargados — el bloque nuevo buscará estímulos distintos.`;
+  msg.textContent = `${firmas.length} WODs de referencia cargados — el bloque nuevo buscará estímulos distintos, y la rotación de patrón/benchmark sigue desde donde quedó ese programa.`;
 }
 
 async function populateActiveProgSelect(){
@@ -8001,9 +8042,19 @@ const CROSSFIT_17C_TODOS_BENCHMARKS = [
 // a mano, se re-evalúa automáticamente si el catálogo de benchmarks cambia.
 const CROSSFIT_17C_EXCLUIR_PRINCIPIANTE = /muscle-up/i;
 
-function _crossfit17cElegirPosicion(blockIndex, daysPerWeek, weeksCountTotal){
+// Fase 25 (hallazgo de la auditoría de 1 año: "un programa nuevo siempre pone el
+// mismo primer benchmark en la misma posición"): cicloOffset es opcional y por
+// defecto 0 — cero cambio de comportamiento para toda la simulación/producción
+// existente. Cuando el coach genera un programa nuevo con "Continuar desde
+// programa anterior" (única fuente real de cicloOffset, ver autoGenerateProgram),
+// se sirve del bloque de benchmarks que el ciclo anterior YA usó, en vez de
+// reiniciar siempre en blockIndex=0. Se suma DENTRO de _movIdx (antes del módulo)
+// — nunca a blockIndex*4 en wiGlobal — así la posición sigue acotada a este
+// programa, solo cambia QUÉ día/benchmark le toca.
+function _crossfit17cElegirPosicion(blockIndex, daysPerWeek, weeksCountTotal, cicloOffset){
+  cicloOffset = cicloOffset || 0;
   const total = 4 * daysPerWeek;
-  let seed = _movIdx(blockIndex, daysPerWeek*7) % total;
+  let seed = _movIdx(blockIndex + cicloOffset, daysPerWeek*7) % total;
   let weekOffset = Math.floor(seed / daysPerWeek);
   let ti = seed % daysPerWeek;
   let wiGlobal = blockIndex*4 + weekOffset;
@@ -8017,11 +8068,12 @@ function _crossfit17cElegirPosicion(blockIndex, daysPerWeek, weeksCountTotal){
   return { wiGlobal, ti };
 }
 
-function _crossfit17cElegirBenchmark(blockIndex, level){
+function _crossfit17cElegirBenchmark(blockIndex, level, cicloOffset){
+  cicloOffset = cicloOffset || 0;
   const disponibles = CROSSFIT_17C_TODOS_BENCHMARKS.filter(w =>
     level!=='principiante' || !CROSSFIT_17C_EXCLUIR_PRINCIPIANTE.test(w.desc));
-  if(!disponibles.length) return CROSSFIT_17C_TODOS_BENCHMARKS[_movIdx(blockIndex, 13) % CROSSFIT_17C_TODOS_BENCHMARKS.length];
-  const idx = _movIdx(blockIndex, 13) % disponibles.length;
+  if(!disponibles.length) return CROSSFIT_17C_TODOS_BENCHMARKS[_movIdx(blockIndex + cicloOffset, 13) % CROSSFIT_17C_TODOS_BENCHMARKS.length];
+  const idx = _movIdx(blockIndex + cicloOffset, 13) % disponibles.length;
   return disponibles[idx];
 }
 
