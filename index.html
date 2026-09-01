@@ -4850,14 +4850,22 @@ function _crossfitBuildMetcon(dayPattern, nSlots, wi, ti, opts, domain){
 /* ================= CrossFit — distribución semanal explícita (aprobada) =================
    Dominio (corto/medio/largo) y patrón (squat/hinge/.../skill) pasan a ser DOS EJES
    INDEPENDIENTES. El dominio ya NO se deriva del patrón del día — lo decide esta
-   estructura, con el método de MAYOR RESTO (Hamilton) sobre el objetivo 50/25/25.
-   Determinista, sin azar, sin depender de que una rotación "converja" con el tiempo. */
+   estructura, con el método de MAYOR RESTO (Hamilton) sobre el objetivo por dominio.
+   Determinista, sin azar, sin depender de que una rotación "converja" con el tiempo.
+   Fix (pedido de Luis: "más equilibrio entre los dominios"): el objetivo pasa de
+   50/25/25 a un tercio parejo cada uno — corto ya no domina la mitad de la semana. */
 
-// Reparto entero más fiel a 50% corto / 25% medio / 25% largo para N días.
-// Empates exactos (N=2, N=6) se resuelven alternando por paridad de semana (wi%2) —
-// aprobado explícitamente, en vez de un criterio fijo que repita siempre lo mismo.
+// Reparto entero más fiel a 1/3 corto, 1/3 medio, 1/3 largo para N días.
+// Empates exactos se resuelven rotando por semana (wi%3) entre los 3 dominios —
+// con el objetivo parejo (1/3 cada uno) los 3 restos quedan SIEMPRE empatados
+// exactamente igual, así que el orden de desempate decide TODO el reparto real.
+// Antes alternaba solo entre 'medio'/'largo' (wi%2), dejando a 'corto' afuera del
+// desempate siempre — con el objetivo viejo (50/25/25) nunca importaba porque los
+// restos casi nunca empataban justo en 'corto'; con 1/3 parejo eso lo dejaba
+// sistemáticamente por debajo (25%/20% real en vez de 33%). Rotar entre los 3 en
+// vez de 2 hace que cada dominio gane el desempate 1 de cada 3 semanas por igual.
 function _crossfitWeeklyCounts(daysPerWeek, wi){
-  const target = { corto: daysPerWeek*0.5, medio: daysPerWeek*0.25, largo: daysPerWeek*0.25 };
+  const target = { corto: daysPerWeek/3, medio: daysPerWeek/3, largo: daysPerWeek/3 };
   const base = { corto: Math.floor(target.corto), medio: Math.floor(target.medio), largo: Math.floor(target.largo) };
   const resto = daysPerWeek - (base.corto + base.medio + base.largo);
   const restos = [
@@ -4865,7 +4873,8 @@ function _crossfitWeeklyCounts(daysPerWeek, wi){
     { k:'medio', r: target.medio - base.medio },
     { k:'largo', r: target.largo - base.largo },
   ];
-  const ordenEmpate = (wi%2===0) ? ['medio','largo','corto'] : ['largo','medio','corto'];
+  const ORDENES_EMPATE_3 = [['corto','medio','largo'], ['medio','largo','corto'], ['largo','corto','medio']];
+  const ordenEmpate = ORDENES_EMPATE_3[wi%3];
   restos.sort((a,b)=> (b.r!==a.r) ? (b.r-a.r) : (ordenEmpate.indexOf(a.k)-ordenEmpate.indexOf(b.k)));
   for(let i=0; i<resto; i++) base[restos[i].k]++;
   return base;
