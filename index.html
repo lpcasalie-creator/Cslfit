@@ -5347,6 +5347,22 @@ function _crossfit17a2PrescribirSkill(mov, opts, wi){
   return componentes.map(c=>`• ${c}`).join('\n') + `\n${lineaFinal}`;
 }
 
+// Fase 26 (Luis: "no indica el peso" — Back Squat, DB Man-Maker, KB Swing, etc.
+// aparecían en el WOD como pura cantidad de reps, sin ninguna referencia de
+// carga). El motor no tiene un 1RM confiable para cada movimiento de metcon
+// (a diferencia del bloque de Fuerza, que sí usa %1RM sobre el PR del atleta),
+// así que se reutiliza el mismo criterio que Fuerza ya usa para accesorios
+// secundarios ("carga moderada, no buscar máximo") en vez de inventar un kg
+// concreto que podría ser inseguro para un atleta real. Sólo se anota en
+// movimientos con implemento cargable (barra/mancuerna/kettlebell/sled/balón
+// medicinal) — peso corporal, anillas, cardio y GHD no necesitan la aclaración.
+const CROSSFIT_FAMILIAS_CON_CARGA = new Set(['barra','mancuerna','kettlebell','carry_sled','balon_medicinal']);
+function _crossfitConCarga(linea, mov){
+  if(!linea || /kg|lb|%|carga|peso/i.test(linea)) return linea; // ya trae su propia indicación
+  if(!CROSSFIT_FAMILIAS_CON_CARGA.has(_crossfitFamiliaEquipo(mov))) return linea;
+  return `${linea} (carga moderada)`;
+}
+
 // Fase 18 (Fix 11): extraída de adentro de _crossfitDay — mismo texto exacto,
 // cero cambio de comportamiento. Permite reutilizar la construcción de WOD desde
 // cualquier lugar que ya tenga (wodFormat, elegidos, nSlots, cap) resueltos, como
@@ -5356,7 +5372,7 @@ function _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domai
   let wodTexto, estructuraLabel;
 
   if(wodFormat === 'AMRAP'){
-    const wodLines = elegidos.map((e,i)=> _crossfitPrescribe(e.name, wi, ti+i+regenSeedWod*5, opts.level, domain));
+    const wodLines = elegidos.map((e,i)=> _crossfitConCarga(_crossfitPrescribe(e.name, wi, ti+i+regenSeedWod*5, opts.level, domain), e.name));
     estructuraLabel = elegidos.length===3 ? 'Triplet' : 'Couplet';
     wodTexto = `AMRAP ${cap}' (${estructuraLabel} CrossFit):\n${wodLines.join('\n')}`;
 
@@ -5405,23 +5421,24 @@ function _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domai
         const m = linea.match(/^(\d+)(\s.*)$/);
         if(m) lineaFinal = `${parseInt(m[1],10)*rounds}${m[2]}`;
       }
+      lineaFinal = _crossfitConCarga(lineaFinal, mov);
       wodTexto = `For Time (cap ${cap}') (${estructuraLabel} CrossFit):\n${lineaFinal}`;
     } else {
       const rounds = _crossfitForTimeRounds(elegidos, opts.level, domain, opts);
       const wodLines = elegidos.map((e,i)=>
-        _crossfitVolumeBasedPrescribe(e.name, wi, ti+i+regenSeedWod*5, opts.level, domain, repsPerMovementTotal, rounds, false));
+        _crossfitConCarga(_crossfitVolumeBasedPrescribe(e.name, wi, ti+i+regenSeedWod*5, opts.level, domain, repsPerMovementTotal, rounds, false), e.name));
       wodTexto = `${rounds} rondas For Time (cap ${cap}') (${estructuraLabel} CrossFit):\n${wodLines.join('\n')}`;
     }
 
   } else if(wodFormat === 'EMOM'){
     const capRedondeado = Math.max(nSlots, Math.round(cap / nSlots) * nSlots);
-    const wodLines = elegidos.map((e,i)=> _crossfitPrescribe(e.name, wi, ti+i+regenSeedWod*5, opts.level, domain));
+    const wodLines = elegidos.map((e,i)=> _crossfitConCarga(_crossfitPrescribe(e.name, wi, ti+i+regenSeedWod*5, opts.level, domain), e.name));
     wodTexto = `EMOM ${capRedondeado}' — ${elegidos.length} estaciones (rotando):\n${wodLines.join('\n')}`;
 
   } else { // Chipper
     const total = CROSSFIT_TOTAL_VOLUME_TARGET[opts.level]['largo'];
     const wodLines = elegidos.map((e,i)=>
-      _crossfitVolumeBasedPrescribe(e.name, wi, ti+i+regenSeedWod*5, opts.level, domain, total, elegidos.length, true));
+      _crossfitConCarga(_crossfitVolumeBasedPrescribe(e.name, wi, ti+i+regenSeedWod*5, opts.level, domain, total, elegidos.length, true), e.name));
     estructuraLabel = 'Chipper';
     wodTexto = `Chipper (cap ${cap}'):\n${wodLines.join('\n')}`;
   }
