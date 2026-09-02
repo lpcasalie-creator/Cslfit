@@ -836,6 +836,16 @@
         <input type="text" id="scoreName" placeholder="Ej: Back Squat 1RM, WOD del día...">
       </div>
 
+      <div id="scoreTypeWrap">
+        <label>Tipo de resultado</label>
+        <select id="scoreTypeSelect" onchange="onScoreTypeChange()">
+          <option value="load">Carga (kg) — ej. un 1RM</option>
+          <option value="time">Tiempo (mm:ss)</option>
+          <option value="reps">Rondas / reps totales</option>
+          <option value="rounds_reps">Rondas + reps (ej: 12+7)</option>
+        </select>
+      </div>
+
       <label id="scoreResultLabel">Resultado</label>
       <input type="text" id="scoreResult" placeholder="Ej: 4:32, 140kg, 12 rounds + 5 reps...">
       <button class="btn" onclick="saveScore()">Guardar score</button>
@@ -1090,9 +1100,9 @@ function renderHomeGreeting(){
    Pedido de Luis: "vender" el registro de datos, no el WOD — lo primero
    que se ve al abrir la app es la evolución real del atleta (1RM, %BS,
    benchmarks Girls/Hero, marcas de gimnasia/monoestructural), no la
-   sesión del día. Combina rm_entries + scores porque un "récord" no es
-   solo un peso de barra. Sesión de hoy sigue existiendo, pero compacta
-   y más abajo. */
+   sesión del día. Separa `scores` en dos "kinds" (load = 1RM, resto = score)
+   porque un "récord" no es solo un peso de barra — ver saveRM/renderHomeDashboard.
+   Sesión de hoy sigue existiendo, pero compacta y más abajo. */
 function renderProgressHero(heroPick, rmHistoryFor, scoreHistoryFor){
   const el = document.getElementById('homeProgressHero');
   if(!heroPick){ el.innerHTML = ''; return; }
@@ -1188,13 +1198,16 @@ async function markCheckinToday(){
 }
 
 async function renderHomeDashboard(){
-  const [{data: rmData}, {data: scoreData}, checkinsRes] = await Promise.all([
-    sb.from('rm_entries').select('*').eq('user_id', currentUser.id).order('created_at', {ascending:true}),
+  const [{data: scoreData}, checkinsRes] = await Promise.all([
     sb.from('scores').select('*').eq('user_id', currentUser.id).order('created_at', {ascending:true}),
     sb.from('checkins').select('checkin_date').eq('user_id', currentUser.id),
   ]);
-  const rms = rmData || [];
-  const scores = scoreData || [];
+  const allScores = scoreData || [];
+  // rm_entries se retiró (ver saveRM) — un 1RM ahora vive en `scores` con
+  // score_type='load'. Se separa acá mismo para no tocar la lógica de abajo,
+  // que ya distinguía "kind:'rm'" de "kind:'score'".
+  const rms = allScores.filter(s=>s.score_type==='load').map(s=>({ movement:s.name, rm:parseFloat(s.result), created_at:s.created_at }));
+  const scores = allScores.filter(s=>s.score_type!=='load');
   // La tabla checkins puede no existir todavía (falta correr la migración) —
   // degrada con gracia: la racha simplemente no se muestra, el resto del
   // dashboard sigue funcionando igual.
@@ -1795,29 +1808,43 @@ function renderPctFromRM(rm){
   document.getElementById('rmPctTable').innerHTML =
     `<tr><th>%</th><th>${currentWeightUnit==='lb'?'Lb':'Kg'}</th><th style="text-align:left;">Uso</th></tr>${rows}`;
 }
+// Fix (Luis: "hay un conflicto entre los RM y los scores" — dos tablas
+// separadas para lo mismo, "Back Squat" tenía un historial en cada una que
+// nunca se cruzaba). rm_entries se retira: un 1RM ahora se guarda como un
+// score más (score_type='load', category='custom') — la pestaña RM pasa a
+// ser una VISTA filtrada sobre `scores`, no una base de datos aparte. Los
+// registros viejos de rm_entries se migran una sola vez con SQL (no se
+// borra la tabla — queda como respaldo, simplemente deja de usarse).
 async function saveRM(){
   const movement = document.getElementById('rmMovement').value || 'Sin nombre';
-  const { error } = await sb.from('rm_entries').insert({
-    user_id: currentUser.id, movement, rm: lastRM
+  const { error } = await sb.from('scores').insert({
+    user_id: currentUser.id, name: movement, result: String(lastRM), category:'custom', score_type:'load'
   });
   if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
   await renderRMHistory();
   await populateRMChartMovements();
+  await renderScores(); // el mismo registro también vive en la lista de Scores
+  await populateScoreChartMovements();
 }
 let _rmHistCache = [];
 async function renderRMHistory(){
-  const { data } = await sb.from('rm_entries').select('*')
-    .eq('user_id', currentUser.id).order('created_at', {ascending:false}).limit(50);
-  _rmHistCache = data || [];
+  const { data } = await sb.from('scores').select('*')
+    .eq('user_id', currentUser.id).eq('score_type', 'load').order('created_at', {ascending:false}).limit(50);
+  // Normalizado a la forma vieja de rm_entries (movement/rm) para no tener que
+  // tocar populateRMChartMovements/drawRMChart/_prBestByMovement/renderPrDetail,
+  // que ya asumen ese shape.
+  _rmHistCache = (data || []).map(s => ({ id:s.id, movement:s.name, rm:parseFloat(s.result), created_at:s.created_at }));
   renderPrList(); renderPrDetail();
   document.getElementById('rmHistory').innerHTML = _rmHistCache.length
     ? _rmHistCache.map(h=>`<div class="score-item"><span>${h.movement} — <b>${fmtWeight(Number(h.rm))}</b> <span class="muted">(${new Date(h.created_at).toLocaleDateString('es-CL')})</span></span><span class="del" onclick="delRM('${h.id}')">Borrar</span></div>`).join('')
     : '<p class="muted">Sin registros aún.</p>';
 }
 async function delRM(id){
-  await sb.from('rm_entries').delete().eq('id', id);
+  await sb.from('scores').delete().eq('id', id);
   await renderRMHistory();
   await populateRMChartMovements();
+  await renderScores();
+  await populateScoreChartMovements();
 }
 
 /* ---------------- % BS — Fase 2 (misma lógica que la tabla Excel CSL-Fit) ---------------- */
@@ -7271,8 +7298,9 @@ async function changeAthletePlan(athleteId, plan){
 
 async function getLastActivityMap(athleteIds){
   if(!athleteIds.length) return {};
-  const [rm, body, skills, scores, wod] = await Promise.all([
-    sb.from('rm_entries').select('user_id, created_at').in('user_id', athleteIds),
+  // rm_entries se retiró (ver saveRM) — un 1RM ahora vive en `scores`, ya cubierto
+  // por la consulta de scores de abajo, no hace falta consultarlo aparte.
+  const [body, skills, scores, wod] = await Promise.all([
     sb.from('body_entries').select('user_id, created_at').in('user_id', athleteIds),
     sb.from('skills_entries').select('user_id, created_at').in('user_id', athleteIds),
     sb.from('scores').select('user_id, created_at').in('user_id', athleteIds),
@@ -7283,7 +7311,6 @@ async function getLastActivityMap(athleteIds){
     const d = new Date(r[dateField]);
     if(!map[r.user_id] || d > map[r.user_id]) map[r.user_id] = d;
   });
-  consider(rm, 'created_at');
   consider(body, 'created_at');
   consider(skills, 'created_at');
   consider(scores, 'created_at');
@@ -7406,7 +7433,7 @@ async function toggleAthleteProgress(athleteId){
   el.style.display = 'block';
 
   const [rms, bodies, skills, scoresData] = await Promise.all([
-    sb.from('rm_entries').select('*').eq('user_id', athleteId).order('created_at', {ascending:false}).limit(20),
+    sb.from('scores').select('*').eq('user_id', athleteId).eq('score_type','load').order('created_at', {ascending:false}).limit(20),
     sb.from('body_entries').select('*').eq('user_id', athleteId).order('entry_date', {ascending:false}).limit(5),
     sb.from('skills_entries').select('*').eq('user_id', athleteId).order('entry_date', {ascending:false}).limit(1),
     sb.from('scores').select('*').eq('user_id', athleteId).order('created_at', {ascending:false}).limit(15),
@@ -7418,13 +7445,13 @@ async function toggleAthleteProgress(athleteId){
 
   let html = '';
 
-  // 1RM: mejor marca por movimiento
+  // 1RM: mejor marca por movimiento (score_type='load' dentro de `scores` — ver saveRM)
   const rmList = rms.data || [];
   if(rmList.length){
     const best = {};
-    rmList.forEach(r=>{ if(!best[r.movement] || Number(r.rm) > Number(best[r.movement].rm)) best[r.movement]=r; });
+    rmList.forEach(r=>{ if(!best[r.name] || parseFloat(r.result) > parseFloat(best[r.name].result)) best[r.name]=r; });
     html += sec('1RM (mejores marcas)', Object.values(best).map(r=>
-      row(`${r.movement} — <b>${Number(r.rm).toFixed(1)} kg</b> <span class="muted">(${new Date(r.created_at).toLocaleDateString('es-CL')})</span>`)).join(''));
+      row(`${escapeHtml(r.name)} — <b>${parseFloat(r.result).toFixed(1)} kg</b> <span class="muted">(${new Date(r.created_at).toLocaleDateString('es-CL')})</span>`)).join(''));
   } else html += sec('1RM', '<p class="muted" style="font-size:12px;">Sin registros.</p>');
 
   // Body: última medición
@@ -8479,19 +8506,34 @@ document.addEventListener('DOMContentLoaded', ()=>{
   }
 });
 
+// Fix (Luis: "hay un conflicto entre los RM y los scores"): un score "custom"
+// siempre se guardaba como score_type='rounds_reps' sin importar qué era en
+// realidad — por eso un peso como "Back Squat 100kg" nunca se graficaba ni
+// competía por el 🏆 (bestValue() no rankea rounds_reps a propósito). Ahora el
+// coach elige el tipo real, igual que ya se deriva automáticamente para
+// Girls/Hero desde BENCHMARK_WODS.
+const SCORE_TYPE_LABELS = {time:'Tiempo (mm:ss)', reps:'Rondas / reps totales', load:'Carga (kg)', rounds_reps:'Rondas + reps (ej: 12+7)'};
+const SCORE_TYPE_PLACEHOLDERS = {time:'Ej: 4:32', reps:'Ej: 187', load:'Ej: 140', rounds_reps:'Ej: 12+7'};
+function onScoreTypeChange(){
+  const type = document.getElementById('scoreTypeSelect').value;
+  document.getElementById('scoreResultLabel').textContent = SCORE_TYPE_LABELS[type];
+  document.getElementById('scoreResult').placeholder = SCORE_TYPE_PLACEHOLDERS[type];
+}
 function renderBenchmarkSelect(){
   const cat = document.getElementById('scoreCategory').value;
   const pickerWrap = document.getElementById('benchmarkPickerWrap');
   const customWrap = document.getElementById('customNameWrap');
+  const typeWrap = document.getElementById('scoreTypeWrap');
   if(cat==='custom'){
     pickerWrap.style.display='none';
     customWrap.style.display='block';
-    document.getElementById('scoreResultLabel').textContent='Resultado';
-    document.getElementById('scoreResult').placeholder='Ej: 4:32, 140kg, 12 rounds + 5 reps...';
+    typeWrap.style.display='block';
+    onScoreTypeChange();
     return;
   }
   pickerWrap.style.display='block';
   customWrap.style.display='none';
+  typeWrap.style.display='none';
   const list = BENCHMARK_WODS[cat];
   document.getElementById('benchmarkPicker').innerHTML = list.map(w=>`<option value="${w.name}">${w.name}</option>`).join('');
   onBenchmarkPick();
@@ -8523,6 +8565,7 @@ async function saveScore(){
   if(cat==='custom'){
     name = document.getElementById('scoreName').value.trim();
     if(!name) return;
+    scoreType = document.getElementById('scoreTypeSelect').value;
   } else {
     name = document.getElementById('benchmarkPicker').value;
     scoreType = BENCHMARK_WODS[cat].find(w=>w.name===name).scoreType;
