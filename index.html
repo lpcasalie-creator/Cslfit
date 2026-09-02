@@ -7895,6 +7895,24 @@ const MOVEMENT_SCALING = {
     'Strict Pull-up completo',
     'Kipping Pull-up completo',
   ],
+  // Fase 26 (Luis: "Press to Handstand debería tener formas de escalar ya que
+  // es un movimiento avanzado"): estaba en CROSSFIT_ADVANCED_MOVEMENTS (así que
+  // CrossFit ya lo excluye de principiante) pero no tenía escalera en esta tabla
+  // compartida — hasScaling()/getScaling() son los que alimentan _scaleForBeginner()
+  // para los OTROS 5 enfoques (Fuerza/Gimnasia/Cardio/Musculación). Sin ladder Y
+  // sin estar en BEGINNER_BAN, un principiante en esos enfoques podía recibir
+  // "Press to Handstand" tal cual, sin ninguna escala. Misma progresión real de
+  // presión invertida que ya usa el bloque de componentes de CrossFit
+  // (CROSSFIT_SKILL_PROGRESION: Pike Push-up → Handstand Hold), con los pasos
+  // intermedios reales hasta el movimiento completo.
+  'Press to Handstand': [
+    'Pike Push-up con pies en el suelo',
+    'Pike Push-up con pies elevados (banco o cajón bajo)',
+    'Handstand Hold contra el muro (control invertido antes de presionar)',
+    'Press to Handstand con piernas flexionadas (tuck), asistido desde cajón',
+    'Straddle Press to Handstand (piernas abiertas, menos palanca)',
+    'Press to Handstand completo (piernas juntas)',
+  ],
 };
 
 // Fuentes confiables por categoría, para sesgar el primer resultado de YouTube
