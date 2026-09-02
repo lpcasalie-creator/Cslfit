@@ -1349,10 +1349,23 @@ function fmt(s){
   const m = Math.floor(Math.abs(s)/60), sec = Math.abs(s)%60;
   return (s<0?'-':'')+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');
 }
+// Fix (Luis: "no escucho el pitito desde el celular"): cada beep creaba un
+// AudioContext NUEVO desde adentro de un callback de setInterval — en Safari/iOS
+// un AudioContext creado fuera de un gesto directo del usuario (tap/click) arranca
+// "suspended" y nunca sale sonido, sin ningún error visible. Se reutiliza un único
+// contexto persistente, creado/desbloqueado en startTimer() (que sí corre dentro
+// del onclick del botón Start — un gesto real), y se llama resume() en cada beep
+// por si el sistema lo volvió a suspender solo (pasa en iOS al recuperar foco).
+let _timerAudioCtx = null;
+function _timerGetAudioCtx(){
+  if(!_timerAudioCtx) _timerAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if(_timerAudioCtx.state === 'suspended') _timerAudioCtx.resume();
+  return _timerAudioCtx;
+}
 function timerAlert(){
   if(navigator.vibrate) navigator.vibrate([200,100,200,100,400]);
   try{
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = _timerGetAudioCtx();
     [0,0.3,0.6].forEach(t=>{
       const osc = ctx.createOscillator(), gain = ctx.createGain();
       osc.connect(gain); gain.connect(ctx.destination);
@@ -1368,7 +1381,7 @@ function timerAlert(){
 function timerBeep(){
   if(navigator.vibrate) navigator.vibrate(150);
   try{
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = _timerGetAudioCtx();
     const osc = ctx.createOscillator(), gain = ctx.createGain();
     osc.connect(gain); gain.connect(ctx.destination);
     osc.frequency.value = 660;
@@ -1388,6 +1401,7 @@ function _timerUpdateEmomStatus(){
 const TIMER_PREP_SECONDS = 10;
 function startTimer(){
   if(timerRunning) return;
+  try{ _timerGetAudioCtx(); }catch(e){ /* audio no disponible — el timer sigue funcionando igual */ }
   const display = document.getElementById('timerDisplay');
   const statusEl = document.getElementById('timerStatus');
   display.classList.remove('timer-finished');
