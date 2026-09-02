@@ -121,6 +121,13 @@
   }
   .timer-display.timer-finished{ color:var(--danger); animation:timerPulse 1s ease-in-out 3; }
   @keyframes timerPulse{ 0%,100%{opacity:1;} 50%{opacity:.3;} }
+  .timer-status{
+    font-family:'Barlow Condensed',sans-serif; font-size:15px; font-weight:700;
+    text-align:center; text-transform:uppercase; letter-spacing:1px; color:var(--gray-dim);
+    min-height:20px; margin-top:10px;
+  }
+  .timer-status.fase-trabajo{ color:var(--lime); }
+  .timer-status.fase-descanso{ color:var(--danger); }
   .timer-controls{display:flex; gap:8px;}
   .timer-controls .btn{margin-top:0;}
 
@@ -420,20 +427,17 @@
   <section id="timer" class="view">
     <div class="card">
       <h2>Timer</h2>
-      <div class="grid2">
-        <div>
-          <label>Modo</label>
-          <select id="timerMode" onchange="renderTimerInputs()">
-            <option value="fortime">For Time</option>
-            <option value="amrap">AMRAP</option>
-            <option value="emom">EMOM</option>
-          </select>
-        </div>
-        <div id="timerParamWrap">
-          <label>Minutos</label>
-          <input type="number" id="timerMinutes" value="20" min="1">
-        </div>
+      <label>Modo</label>
+      <select id="timerMode" onchange="renderTimerInputs()">
+        <option value="fortime">For Time</option>
+        <option value="amrap">AMRAP</option>
+        <option value="emom">EMOM</option>
+      </select>
+      <div id="timerParamWrap">
+        <label>Minutos</label>
+        <input type="number" id="timerMinutes" value="20" min="1">
       </div>
+      <div class="timer-status" id="timerStatus"></div>
       <div class="timer-display" id="timerDisplay">00:00</div>
       <div class="timer-controls grid2">
         <button class="btn" onclick="startTimer()">Start</button>
@@ -1320,12 +1324,25 @@ async function loadWod(){
 
 /* ---------------- TIMER ---------------- */
 let timerInterval=null, timerSeconds=0, timerRunning=false;
+// Pedido de Luis: EMOM como intervalo real (sets + trabajo + descanso), no solo
+// una cuenta regresiva de minutos totales sin ninguna señal en el camino.
+// null cuando el modo no es EMOM — los otros 2 modos no usan este estado.
+let timerEmom = null; // { round, totalRounds, phase:'trabajo'|'descanso', workSec, restSec }
+
 function renderTimerInputs(){
   const mode = document.getElementById('timerMode').value;
   document.getElementById('timerParamWrap').innerHTML =
     mode==='emom'
-    ? '<label>Minutos totales</label><input type="number" id="timerMinutes" value="10" min="1">'
+    ? `<div class="grid2" style="gap:8px;">
+        <div><label>Sets</label><input type="number" id="timerSets" value="10" min="1"></div>
+        <div><label>Trabajo (seg)</label><input type="number" id="timerWorkSec" value="40" min="1"></div>
+      </div>
+      <label>Descanso (seg)</label>
+      <input type="number" id="timerRestSec" value="20" min="0">`
     : '<label>Minutos</label><input type="number" id="timerMinutes" value="20" min="1">';
+  const statusEl = document.getElementById('timerStatus');
+  statusEl.textContent = '';
+  statusEl.className = 'timer-status';
 }
 function fmt(s){
   const m = Math.floor(Math.abs(s)/60), sec = Math.abs(s)%60;
@@ -1345,28 +1362,92 @@ function timerAlert(){
     });
   }catch(e){ /* audio no disponible */ }
 }
+// Beep corto — señal de transición entre trabajo/descanso/siguiente set (distinta
+// de timerAlert(), que es la señal más larga reservada para el final del todo).
+function timerBeep(){
+  if(navigator.vibrate) navigator.vibrate(150);
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 660;
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+0.15);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime+0.15);
+  }catch(e){ /* audio no disponible */ }
+}
+function _timerUpdateEmomStatus(){
+  const statusEl = document.getElementById('timerStatus');
+  statusEl.textContent = `Set ${timerEmom.round}/${timerEmom.totalRounds} · ${timerEmom.phase==='trabajo' ? 'TRABAJO' : 'DESCANSO'}`;
+  statusEl.className = 'timer-status ' + (timerEmom.phase==='trabajo' ? 'fase-trabajo' : 'fase-descanso');
+}
 function startTimer(){
   if(timerRunning) return;
   const mode = document.getElementById('timerMode').value;
-  const mins = parseFloat(document.getElementById('timerMinutes').value)||0;
-  timerSeconds = mode==='amrap' || mode==='emom' ? mins*60 : 0;
-  const countingDown = mode!=='fortime';
+  const display = document.getElementById('timerDisplay');
+  display.classList.remove('timer-finished');
   timerRunning = true;
-  document.getElementById('timerDisplay').classList.remove('timer-finished');
+
+  if(mode==='emom'){
+    const totalRounds = Math.max(1, parseInt(document.getElementById('timerSets').value)||1);
+    const workSec = Math.max(1, parseInt(document.getElementById('timerWorkSec').value)||1);
+    const restSec = Math.max(0, parseInt(document.getElementById('timerRestSec').value)||0);
+    // Reanuda si ya estaba a mitad de un set (Start después de Reset lo deja en
+    // null); si no, arranca limpio en el set 1, fase de trabajo.
+    if(!timerEmom) timerEmom = { round:1, totalRounds, phase:'trabajo', workSec, restSec };
+    timerSeconds = timerEmom.phase==='trabajo' ? timerEmom.workSec : timerEmom.restSec;
+    if(timerSeconds===0) timerSeconds = timerEmom.workSec; // descanso=0: sin fase de descanso
+    display.textContent = fmt(timerSeconds);
+    _timerUpdateEmomStatus();
+    timerBeep();
+    timerInterval = setInterval(()=>{
+      timerSeconds--;
+      if(timerSeconds<=0){
+        // Fin de la fase actual: pasar a descanso (si hay), o al siguiente set,
+        // o terminar si ya se cumplieron todos los sets.
+        if(timerEmom.phase==='trabajo' && timerEmom.restSec>0){
+          timerEmom.phase = 'descanso';
+          timerSeconds = timerEmom.restSec;
+          _timerUpdateEmomStatus();
+          timerBeep();
+        } else if(timerEmom.round < timerEmom.totalRounds){
+          timerEmom.round++;
+          timerEmom.phase = 'trabajo';
+          timerSeconds = timerEmom.workSec;
+          _timerUpdateEmomStatus();
+          timerBeep();
+        } else {
+          clearInterval(timerInterval); timerRunning=false; timerEmom=null;
+          display.classList.add('timer-finished');
+          document.getElementById('timerStatus').textContent = 'Completo';
+          timerAlert();
+          return;
+        }
+      }
+      display.textContent = fmt(timerSeconds);
+    },1000);
+    return;
+  }
+
+  const mins = parseFloat(document.getElementById('timerMinutes').value)||0;
+  timerSeconds = mode==='amrap' ? mins*60 : 0;
+  const countingDown = mode!=='fortime';
   timerInterval = setInterval(()=>{
     timerSeconds += countingDown ? -1 : 1;
-    document.getElementById('timerDisplay').textContent = fmt(timerSeconds);
+    display.textContent = fmt(timerSeconds);
     if(countingDown && timerSeconds<=0){
       clearInterval(timerInterval); timerRunning=false;
-      document.getElementById('timerDisplay').classList.add('timer-finished');
+      display.classList.add('timer-finished');
       timerAlert();
     }
   },1000);
 }
 function resetTimer(){
-  clearInterval(timerInterval); timerRunning=false; timerSeconds=0;
+  clearInterval(timerInterval); timerRunning=false; timerSeconds=0; timerEmom=null;
   const el = document.getElementById('timerDisplay');
   el.textContent='00:00'; el.classList.remove('timer-finished');
+  const statusEl = document.getElementById('timerStatus');
+  statusEl.textContent=''; statusEl.className='timer-status';
 }
 renderTimerInputs();
 
