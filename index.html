@@ -128,6 +128,7 @@
   }
   .timer-status.fase-trabajo{ color:var(--lime); }
   .timer-status.fase-descanso{ color:var(--danger); }
+  .timer-status.fase-prep{ color:var(--gray-dim); }
   .timer-controls{display:flex; gap:8px;}
   .timer-controls .btn{margin-top:0;}
 
@@ -1381,12 +1382,36 @@ function _timerUpdateEmomStatus(){
   statusEl.textContent = `Set ${timerEmom.round}/${timerEmom.totalRounds} · ${timerEmom.phase==='trabajo' ? 'TRABAJO' : 'DESCANSO'}`;
   statusEl.className = 'timer-status ' + (timerEmom.phase==='trabajo' ? 'fase-trabajo' : 'fase-descanso');
 }
+// Pedido de Luis: los 3 modos arrancan con 10" de preparación (tiempo para
+// llegar a la estación/barra) antes de que empiece a correr el trabajo real,
+// con pitido en los últimos 3 segundos — igual criterio en For Time, AMRAP y EMOM.
+const TIMER_PREP_SECONDS = 10;
 function startTimer(){
   if(timerRunning) return;
-  const mode = document.getElementById('timerMode').value;
   const display = document.getElementById('timerDisplay');
+  const statusEl = document.getElementById('timerStatus');
   display.classList.remove('timer-finished');
   timerRunning = true;
+
+  timerSeconds = TIMER_PREP_SECONDS;
+  display.textContent = fmt(timerSeconds);
+  statusEl.textContent = 'PREPÁRATE';
+  statusEl.className = 'timer-status fase-prep';
+  timerInterval = setInterval(()=>{
+    timerSeconds--;
+    if(timerSeconds > 0){
+      display.textContent = fmt(timerSeconds);
+      if(timerSeconds <= 3) timerBeep();
+      return;
+    }
+    clearInterval(timerInterval);
+    timerAlert(); // señal de "arranca" — distinta de los pitidos cortos de la cuenta atrás
+    _timerStartMode();
+  },1000);
+}
+function _timerStartMode(){
+  const mode = document.getElementById('timerMode').value;
+  const display = document.getElementById('timerDisplay');
 
   if(mode==='emom'){
     const totalRounds = Math.max(1, parseInt(document.getElementById('timerSets').value)||1);
@@ -1429,6 +1454,8 @@ function startTimer(){
     return;
   }
 
+  const statusEl = document.getElementById('timerStatus');
+  statusEl.textContent = ''; statusEl.className = 'timer-status';
   const mins = parseFloat(document.getElementById('timerMinutes').value)||0;
   timerSeconds = mode==='amrap' ? mins*60 : 0;
   const countingDown = mode!=='fortime';
