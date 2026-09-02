@@ -4726,6 +4726,28 @@ const CROSSFIT_COMPOUND_REPS_BY_LEVEL = {
   avanzado:     [10,15],
 };
 
+// Fase 26 (Luis: "24 Cal Bike, no se demoran ni un minuto" en un Single de 8-12').
+// _crossfitCapMixed() (usada por _crossfitVolumeBasedPrescribe) tiene un techo
+// pensado para calorías como UNA pieza entre varias (Couplet/Triplet/Chipper) —
+// aplicado a un Single (una sola pieza que debe llenar TODO el cap) da un
+// número trivial. Ritmo de referencia (cal/min, esfuerzo SOSTENIDO) para calcular
+// el volumen directo desde el cap real de la sesión, no desde el total-por-dominio
+// pensado para repartirse entre varios movimientos. Se indexa por el LARGO REAL
+// del cap (no por "domain"): en sesiones de 90'/120' el cap de un bloque "corto"
+// se estira bastante con el bonus de duración, y a esos minutos ya no le
+// corresponde un ritmo de "corto" — el ritmo sostenible baja con la duración real.
+const CROSSFIT_CAL_PER_MIN_SINGLE = {
+  principiante: { corto:6,  medio:5,   largo:4   },
+  intermedio:   { corto:9,  medio:7,   largo:5.5 },
+  avanzado:     { corto:11, medio:9.5, largo:7.5 },
+};
+function _crossfitCalPerMinSingle(level, capMin){
+  const t = CROSSFIT_CAL_PER_MIN_SINGLE[level] || CROSSFIT_CAL_PER_MIN_SINGLE.intermedio;
+  if(capMin <= 12) return t.corto;
+  if(capMin <= 20) return t.medio;
+  return t.largo;
+}
+
 // Helper COMPARTIDO por For Time y Chipper: redistribuye volumen SOLO si el
 // movimiento es REPS o MIXED. TIME/DISTANCE y nombres con prescripción ya
 // embebida (ej. "Row 250m") devuelven exactamente lo que _crossfitPrescribe()
@@ -5347,7 +5369,16 @@ function _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domai
       // estímulo For Time — con un solo movimiento se colapsa a UN total, no a
       // rondas × reps ("30 Muscle-Ups por tiempo" en vez de "6x5").
       const mov = elegidos[0].name;
-      const linea = _crossfitVolumeBasedPrescribe(mov, wi, ti+regenSeedWod*5, opts.level, domain, repsPerMovementTotal, 1, false);
+      // Fix (Luis: "24 Cal Bike... no se demoran ni un minuto"): un movimiento
+      // MIXED (Assault Bike, Row, Ski Erg) como ÚNICO contenido de un Single
+      // tiene que llenar el cap completo, no repartirse como si fuera una pieza
+      // más de un Couplet/Chipper — de ahí viene el techo de _crossfitCapMixed()
+      // que aquí no aplica. Se calcula directo desde el cap real (ritmo sostenido
+      // × minutos, con margen para terminar antes del cap, como corresponde a un
+      // "for time" real) en vez de pasar por _crossfitVolumeBasedPrescribe().
+      const linea = _crossfitPrescriptionType(mov) === 'MIXED'
+        ? `${Math.round(cap * _crossfitCalPerMinSingle(opts.level, cap) * 0.9)} Cal ${mov}`
+        : _crossfitVolumeBasedPrescribe(mov, wi, ti+regenSeedWod*5, opts.level, domain, repsPerMovementTotal, 1, false);
       // Si _crossfitVolumeBasedPrescribe delegó en _crossfitPrescribe (movimiento no
       // apto para volumen alto, ej. Muscle-up), esa cifra es "por serie" — se
       // multiplica por las rondas que hubiera tenido para armar el total real.
