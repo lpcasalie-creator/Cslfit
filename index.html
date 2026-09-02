@@ -1648,15 +1648,24 @@ function drawScoreChart(){
   const name = document.getElementById('scoreChartMovement').value;
   const filtered = _scoresCache.filter(s=>s.name===name).slice().reverse(); // más antiguo -> más reciente
   if(!filtered.length){ drawLineChart('scoreChart', [], {}); document.getElementById('scoreChartSummary').textContent=''; return; }
-  const scoreType = filtered[0].score_type;
-  if(scoreType==='rounds_reps'){
+  // Fix (Luis: "Back Squat" con 174.75 y 🏆 en el historial, pero el gráfico
+  // decía "rondas+reps, no se grafica"): antes se decidía el tipo de TODO el
+  // movimiento mirando solo la entrada más antigua — un registro viejo mal
+  // tipeado (de antes de que existiera el selector "Tipo de resultado") tapaba
+  // el gráfico completo aunque el resto de las entradas sí fueran numéricas.
+  // Ahora se descartan solo las entradas realmente sin tipo numérico, y el
+  // tipo "oficial" (para el eje/resumen) se toma de la más reciente graficable
+  // — mismo criterio que ya usa bestValue() para decidir el 🏆.
+  const graphable = filtered.filter(s=>s.score_type !== 'rounds_reps');
+  if(!graphable.length){
     document.getElementById('scoreChartSummary').textContent = 'Este formato (rondas + reps) no se grafica automáticamente — revisa el historial abajo.';
     drawLineChart('scoreChart', [], {});
     return;
   }
-  const points = filtered.map(s=>({
+  const scoreType = graphable[graphable.length-1].score_type;
+  const points = graphable.map(s=>({
     label:s.entry_date,
-    value: scoreType==='time' ? timeToSeconds(s.result) : parseFloat(s.result)
+    value: s.score_type==='time' ? timeToSeconds(s.result) : parseFloat(s.result)
   })).filter(p=>p.value!==null && !isNaN(p.value));
   drawLineChart('scoreChart', points, {unit: scoreType==='load'?' kg':''});
   const summary = document.getElementById('scoreChartSummary');
