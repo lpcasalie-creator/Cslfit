@@ -1816,7 +1816,11 @@ function renderPctFromRM(rm){
 // registros viejos de rm_entries se migran una sola vez con SQL (no se
 // borra la tabla — queda como respaldo, simplemente deja de usarse).
 async function saveRM(){
-  const movement = document.getElementById('rmMovement').value || 'Sin nombre';
+  // Fix (Luis: "por qué me salen dos Back Squat" en el selector de progreso):
+  // rmMovement nunca hacía trim (a diferencia de scoreName, que sí) — un espacio
+  // de más al escribir crea un nombre "distinto" para el agrupador, y aparece
+  // como una segunda entrada separada aunque se vea idéntica en pantalla.
+  const movement = document.getElementById('rmMovement').value.trim() || 'Sin nombre';
   const { error } = await sb.from('scores').insert({
     user_id: currentUser.id, name: movement, result: String(lastRM), category:'custom', score_type:'load'
   });
