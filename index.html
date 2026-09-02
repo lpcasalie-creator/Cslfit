@@ -189,6 +189,8 @@
   .rec-row b{ font-weight:600; }
   .rec-row .v{ color:var(--gray-dim); font-variant-numeric:tabular-nums; }
   .rec-row .pr{ color:var(--lime); font-size:10px; margin-left:4px; }
+  .rec-row.tap{ cursor:pointer; }
+  .rec-row.tap:active{ background:rgba(204,255,0,.06); }
   .sesh-compact-row{ display:flex; justify-content:space-between; font-size:12.5px; padding:6px 0; border-bottom:1px solid var(--border); color:var(--gray); }
   .sesh-compact-row:last-child{ border-bottom:none; }
   .sesh-compact-row b{ color:var(--white); font-weight:600; }
@@ -1096,6 +1098,32 @@ function renderHomeGreeting(){
   if(fraseEl) fraseEl.textContent = frase;
 }
 
+// Fix (Luis: "si yo quiero ver el progreso me debería tirar un gráfico"): al
+// tocar un renglón de "Récords recientes" del home, salta a la pestaña
+// correspondiente (RM para cargas, Scores para el resto) con el movimiento
+// tocado ya seleccionado en su gráfico de Progreso. showView() ya dispara su
+// propia carga de datos internamente; se vuelve a llamar acá para no
+// depender de que esa promesa termine antes de fijar el <select>.
+async function openRecordProgress(kind, name){
+  if(kind === 'rm'){
+    showView('rm');
+    await renderRMHistory();
+    populateRMChartMovements();
+    const sel = document.getElementById('rmChartMovement');
+    if([...sel.options].some(o=>o.value===name)) sel.value = name;
+    drawRMChart();
+    sel.scrollIntoView({behavior:'smooth', block:'center'});
+  } else {
+    showView('scores');
+    await renderScores();
+    populateScoreChartMovements();
+    const sel = document.getElementById('scoreChartMovement');
+    if([...sel.options].some(o=>o.value===name)) sel.value = name;
+    drawScoreChart();
+    sel.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+}
+
 /* ---------------- Home: dashboard de progreso ----------------
    Pedido de Luis: "vender" el registro de datos, no el WOD — lo primero
    que se ve al abrir la app es la evolución real del atleta (1RM, %BS,
@@ -1235,16 +1263,23 @@ async function renderHomeDashboard(){
 
   const achievements = []; // {kind, name, date, isPR, display, numeric, scoreType}
 
+  // Fix (Luis: "ahí solo se deberían ver los pesos máximos o RM de cada
+  // movimiento"): además de isPR por entrada (para heroPick/PRs del mes, que
+  // no se tocan), se guarda el registro ACTUAL (mejor valor vigente, con su
+  // fecha) por nombre — "Récords recientes" pasa a mostrar un renglón por
+  // movimiento, no cada entrada histórica suelta.
   const rmBestSoFar = {};
+  const rmCurrent = {}; // name -> {date, display}
   rms.forEach(h=>{
     const k = h.movement, v = Number(h.rm);
     const prevBest = rmBestSoFar[k];
     const isPR = (prevBest === undefined) || (v >= prevBest);
-    if(prevBest === undefined || v > prevBest) rmBestSoFar[k] = v;
+    if(prevBest === undefined || v > prevBest){ rmBestSoFar[k] = v; rmCurrent[k] = { date:h.created_at, display: fmtWeight(v) }; }
     achievements.push({ kind:'rm', name:h.movement, date:h.created_at, isPR, display: fmtWeight(v) });
   });
 
   const scoreBestSoFar = {};
+  const scoreCurrent = {}; // name -> {date, display}
   scores.forEach(s=>{
     const type = s.score_type;
     let numeric = null;
@@ -1255,9 +1290,15 @@ async function renderHomeDashboard(){
     if(numeric !== null){
       const prevBest = scoreBestSoFar[s.name];
       isPR = (prevBest === undefined) || (type==='time' ? numeric <= prevBest : numeric >= prevBest);
-      if(prevBest === undefined || (type==='time' ? numeric < prevBest : numeric > prevBest)) scoreBestSoFar[s.name] = numeric;
+      if(prevBest === undefined || (type==='time' ? numeric < prevBest : numeric > prevBest)){
+        scoreBestSoFar[s.name] = numeric; scoreCurrent[s.name] = { date:s.created_at, display:s.result };
+      }
+    } else {
+      // rounds_reps u otro tipo sin ranking: no hay "mejor", se muestra el más reciente.
+      if(!scoreCurrent[s.name] || new Date(s.created_at) > new Date(scoreCurrent[s.name].date)){
+        scoreCurrent[s.name] = { date:s.created_at, display:s.result };
+      }
     }
-    achievements.push({ kind:'score', name:s.name, date:s.created_at, isPR, display:s.result, numeric, scoreType:type });
   });
 
   achievements.sort((a,b)=> new Date(b.date) - new Date(a.date));
@@ -1270,9 +1311,14 @@ async function renderHomeDashboard(){
   const heroPick = achievements.find(a=>a.isPR) || achievements[0];
   renderProgressHero(heroPick, rmHistoryFor, scoreHistoryFor);
 
+  const currentRecords = [
+    ...Object.keys(rmCurrent).map(name=>({ kind:'rm', name, date:rmCurrent[name].date, display:rmCurrent[name].display })),
+    ...Object.keys(scoreCurrent).map(name=>({ kind:'score', name, date:scoreCurrent[name].date, display:scoreCurrent[name].display })),
+  ].sort((a,b)=> new Date(b.date) - new Date(a.date));
+
   const recentEl = document.getElementById('homeRecords');
-  recentEl.innerHTML = achievements.slice(0,4).map(a=>
-    `<div class="rec-row"><b>${escapeHtml(a.name)}</b><span class="v">${escapeHtml(a.display)}${a.isPR?' <span class="pr">PR 🔥</span>':''}</span></div>`
+  recentEl.innerHTML = currentRecords.slice(0,6).map(a=>
+    `<div class="rec-row tap" onclick="openRecordProgress('${a.kind}', ${JSON.stringify(a.name).replace(/"/g,'&quot;')})"><b>${escapeHtml(a.name)}</b><span class="v">${escapeHtml(a.display)}</span></div>`
   ).join('');
 
   const now = Date.now();
