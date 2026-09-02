@@ -4545,6 +4545,32 @@ function _crossfitEquipoDisponible(name, opts){
 // que más se repite; empate se resuelve por orden de aparición (primera familia
 // vista entre las empatadas, determinístico, sin azar — mismo criterio que el
 // resto del generador).
+// Fase 26 (Luis: "hay wod donde el calentamiento es Burger warm up [Burgener],
+// pero después el wod no tiene nada que ver con el calentamiento"). Causa raíz:
+// el Warm-up/Cooldown que se insertan justo antes del metcon (ver
+// _addWarmupCooldown) se elegían según day._pattern — el patrón de FUERZA del
+// día — pero _crossfitCandidatePatterns() EXCLUYE a propósito ese mismo patrón
+// de los candidatos del metcon (evitar que el WOD repita lo mismo que ya se hizo
+// pesado en Fuerza). Resultado: el warm-up puesto justo antes del WOD casi
+// nunca coincidía con lo que el WOD realmente contenía (día "olympic" con
+// Burgener Warm-up, WOD de Box Jump-Over/Zercher Step-up/Suitcase Carry — cero
+// relación). Fix: ese warm-up/cooldown específico pasa a elegirse según el
+// patrón DOMINANTE de los movimientos que el metcon realmente eligió, no según
+// el patrón de Fuerza del día.
+function _crossfitDominantPattern(elegidos){
+  if(!elegidos || !elegidos.length) return null;
+  const conteo = {};
+  const ordenAparicion = [];
+  elegidos.forEach(e=>{
+    const p = e.pattern;
+    if(!(p in conteo)){ conteo[p] = 0; ordenAparicion.push(p); }
+    conteo[p]++;
+  });
+  let mejor = ordenAparicion[0];
+  ordenAparicion.forEach(p=>{ if(conteo[p] > conteo[mejor]) mejor = p; });
+  return mejor;
+}
+
 function _crossfit18DominantFamilia(names){
   if(!names || !names.length) return null;
   const conteo = {};
@@ -5960,7 +5986,7 @@ function _crossfitDay(offset){
     // Fase 17A/17A.2: Fuerza y Skills conviven siempre como bloques separados y
     // reales (type/legacyField propios) — ya no es fuerza XOR skill según patrón
     // del día, sino ambos, con cantidades escaladas por duración.
-    const out = { _pattern: dayPattern, _domain: domain };
+    const out = { _pattern: dayPattern, _domain: domain, _metconPattern: _crossfitDominantPattern(elegidos) };
     out._session = _buildSession(out, {
       wi, ti, isTest:false, opts, focus:'crossfit', pattern:dayPattern, domain,
       secondary: (CROSSFIT_INTERFERENCE[dayPattern]?.medio||[])[0] || null,
@@ -6311,7 +6337,14 @@ function _addWarmupCooldown(day, focus, domain){
   const sess = JSON.parse(JSON.stringify(day._session));
   if(!sess.blocks.some(b=>(b.legacyField||'fuerza') === 'wod')) return day;
 
-  const p = day._pattern;
+  // Fase 26: este Warm-up/Cooldown se inserta pegado al metcon (ver más abajo),
+  // así que tiene que describir lo que el METCON contiene, no el patrón de
+  // Fuerza del día (que _crossfitCandidatePatterns ya excluyó del metcon a
+  // propósito). day._metconPattern sólo existe para CrossFit con WOD de varios
+  // movimientos (_crossfitBuildMetcon); en día de motor, WOD clásico/benchmark,
+  // o los otros 5 enfoques, no hay dato mejor que day._pattern — mismo fallback
+  // de siempre.
+  const p = (focus === 'crossfit' && day._metconPattern) ? day._metconPattern : day._pattern;
   // Fix: sólo CrossFit usa la tabla propia (ver comentario junto a
   // CROSSFIT_WARMUP_BY_PATTERN) — los otros 5 enfoques siguen exactamente
   // igual que antes, mismas tablas compartidas.
