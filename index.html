@@ -3596,7 +3596,11 @@ function _crossfitCandidatePatterns(dayPattern){
    _crossfitDay() — ninguna otra parte del sistema las conoce. */
 
 const CROSSFIT_TIME_TYPE = new Set(['Handstand Hold', 'L-sit']);
-const CROSSFIT_DISTANCE_TYPE = new Set(['Handstand Walk', 'Running', 'Swimming']);
+// Fase 26 (Luis: "Broad jump, no sale la distancia"): Broad Jump es, como
+// Handstand Walk, un movimiento de DISTANCIA — el rep count solo ("14 Broad
+// Jump") no dice nada sin saber cuánto debe avanzar cada salto o el total a
+// cubrir. Caía en REPS (default) por no estar en ninguna de las 3 listas.
+const CROSSFIT_DISTANCE_TYPE = new Set(['Handstand Walk', 'Broad Jump', 'Running', 'Swimming']);
 const CROSSFIT_MIXED_TYPE = new Set(['Rowing', 'Ski Erg', 'Assault Bike / Airbike']);
 
 function _crossfitPrescriptionType(name){
@@ -3777,13 +3781,17 @@ function _crossfitPrescribe(name, wi, ti, level, domain){
     // "305m Handstand Walk", inviable incluso para un atleta avanzado. Rango propio
     // 10-30m, escalado por dominio con el mismo mecanismo que ya usa carry.
     const esHSW = name === 'Handstand Walk';
-    const [lowBase,highBase] = esHSW ? [10,30] : esCarry ? [15,40] : [100,400];
+    // Fase 26: Broad Jump — distancia TOTAL a cubrir con saltos sucesivos (no
+    // sostenido como HSW ni cardio real como Running), rango propio y chico
+    // (~5-10 saltos de 1.5-2m cada uno), mismo mecanismo que HSW.
+    const esBroadJump = name === 'Broad Jump';
+    const [lowBase,highBase] = esHSW ? [10,30] : esBroadJump ? [10,20] : esCarry ? [15,40] : [100,400];
     // El dominio corre la posición dentro del rango — corto cerca del piso, largo del techo
     const factor = domain==='largo' ? [0.6,1] : domain==='medio' ? [0.35,0.7] : [0,0.4];
     const low = Math.round(lowBase + (highBase-lowBase)*factor[0]);
     const high = Math.round(lowBase + (highBase-lowBase)*factor[1]);
     let val = _crossfitRangeValue(low, high, _movIdx(wi, ti));
-    val = esHSW ? Math.round(val) : Math.round(val/5)*5; // HSW no redondea a múltiplos de 5 — rango ya es chico
+    val = (esHSW || esBroadJump) ? Math.round(val) : Math.round(val/5)*5; // HSW/Broad Jump no redondean a múltiplos de 5 — rango ya es chico
     return `${val}m ${name}`;
   }
 
