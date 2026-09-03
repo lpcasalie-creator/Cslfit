@@ -16,6 +16,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -230,8 +231,8 @@
     overflow-y:auto; padding:18px; padding-bottom:calc(24px + env(safe-area-inset-bottom));
     padding-top:calc(18px + env(safe-area-inset-top));
   }
-  .scaling-guide-toolbar{ display:flex; gap:10px; margin-bottom:16px; }
-  .scaling-guide-toolbar .btn{ margin-top:0; flex:1; }
+  .scaling-guide-toolbar{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
+  .scaling-guide-toolbar .btn{ margin-top:0; flex:1 1 auto; min-width:110px; font-size:12px; }
   .scaling-guide-content h1{ font-size:26px; color:var(--lime); margin-bottom:2px; }
   .scaling-guide-content .sg-sub{ font-size:12px; color:var(--gray-dim); letter-spacing:1px; margin-bottom:18px; text-transform:uppercase; }
   .scaling-guide-content .sg-item{ margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid var(--border); }
@@ -1067,7 +1068,8 @@
      @media print oculta todo lo demás para que salga sólo esto en la hoja. -->
 <div id="scalingGuideOverlay" class="scaling-guide-overlay" style="display:none;">
   <div class="scaling-guide-toolbar no-print">
-    <button class="btn" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+    <button class="btn" onclick="downloadScalingGuidePDF()">⬇️ Descargar PDF</button>
+    <button class="btn" onclick="window.print()">🖨️ Imprimir</button>
     <button class="btn danger" onclick="closeScalingGuide()">Cerrar</button>
   </div>
   <div id="scalingGuideContent" class="scaling-guide-content"></div>
@@ -8443,11 +8445,13 @@ function renderMov(){
 // Fase 26 (Luis: "podría salir un estilo pdf que fuera más rápido para los
 // alumnos y no buscar movimientos uno por uno"): una sola hoja con TODAS las
 // escaleras de MOVEMENT_SCALING (misma fuente de datos que "Ver escalamiento"
-// en Movimientos — nunca se desincroniza), pensada para imprimir/guardar como
-// PDF con window.print() en vez de mantener un documento aparte.
+// en Movimientos — nunca se desincroniza), en vez de mantener un documento
+// aparte que se desactualiza.
+function _scalingGuideMovimientos(){
+  return [...new Set(Object.keys(MOVEMENT_SCALING).filter(n=>n!=='Wall Balls'))].sort((a,b)=>a.localeCompare(b,'es'));
+}
 function openScalingGuide(){
-  const nombres = [...new Set(Object.keys(MOVEMENT_SCALING).filter(n=>n!=='Wall Balls'))].sort((a,b)=>a.localeCompare(b,'es'));
-  const items = nombres.map(n=>`
+  const items = _scalingGuideMovimientos().map(n=>`
     <div class="sg-item">
       <h3>${n}</h3>
       <ol>${MOVEMENT_SCALING[n].map(step=>`<li>${step}</li>`).join('')}</ol>
@@ -8462,6 +8466,65 @@ function openScalingGuide(){
 }
 function closeScalingGuide(){
   document.getElementById('scalingGuideOverlay').style.display = 'none';
+}
+
+// Fix (Luis: en iOS Safari window.print() dispara el aviso "Se impidió que
+// este sitio imprima automáticamente" — requiere un toque extra en "Permitir"
+// y de todas formas no deja un archivo. Se agrega una descarga REAL de PDF con
+// jsPDF (cargado por CDN), que en cualquier navegador móvil o de escritorio
+// baja el archivo directo, sin diálogo de impresión de por medio.
+function downloadScalingGuidePDF(){
+  if(!window.jspdf || !window.jspdf.jsPDF){
+    toast('El generador de PDF todavía está cargando, intenta de nuevo en un segundo.', 'error');
+    return;
+  }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const marginX = 40;
+  const lineH = 13;
+  let y = 50;
+
+  function ensureSpace(pts){
+    if(y + pts > pageH - 40){ doc.addPage(); y = 50; }
+  }
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.text('CSL TRAINING', marginX, y);
+  y += 18;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(90);
+  doc.text('GUÍA DE ESCALAMIENTO — COACH LUIS CASALI', marginX, y);
+  doc.setTextColor(0);
+  y += 26;
+
+  _scalingGuideMovimientos().forEach(n=>{
+    const steps = MOVEMENT_SCALING[n];
+    ensureSpace(lineH * 2);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.text(n, marginX, y);
+    y += 18;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    steps.forEach((step, i)=>{
+      const wrapped = doc.splitTextToSize(`${i+1}. ${step}`, pageW - marginX*2 - 10);
+      ensureSpace(wrapped.length * lineH);
+      doc.text(wrapped, marginX + 10, y);
+      y += wrapped.length * lineH;
+    });
+    y += 10;
+  });
+
+  ensureSpace(lineH);
+  doc.setFontSize(9);
+  doc.setTextColor(120);
+  doc.text('CF-L3 · CCFT · USAW L1 · HYROX Official Coach — @luis_casali', marginX, pageH - 30);
+
+  doc.save('CSL-Training-Guia-Escalamiento.pdf');
 }
 
 /* ---------------- BENCHMARKS: Girls & Hero WODs ---------------- */
