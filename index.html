@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>CSL Training | Coach Luis Casali</title>
 
 <!-- PWA -->
@@ -30,13 +30,14 @@
   body{
     background:var(--bg); color:var(--white);
     font-family:'Work Sans',sans-serif;
-    padding-bottom:78px; min-height:100vh;
+    padding-bottom:calc(78px + env(safe-area-inset-bottom)); min-height:100vh;
   }
-  body.has-subnav{ padding-bottom:114px; }
+  body.has-subnav{ padding-bottom:calc(114px + env(safe-area-inset-bottom)); }
   h1,h2,h3,.brand{font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; letter-spacing:0.5px;}
   header.topbar{
     background:var(--bg); border-bottom:1px solid var(--border);
-    padding:16px 18px; position:sticky; top:0; z-index:20;
+    padding:calc(16px + env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) 16px max(18px, env(safe-area-inset-left));
+    position:sticky; top:0; z-index:20;
     display:flex; justify-content:space-between; align-items:flex-start; gap:10px;
   }
   header.topbar .brand{font-size:22px; font-weight:800; color:var(--white);}
@@ -88,6 +89,7 @@
     position:fixed; bottom:0; left:0; right:0; background:var(--bg2);
     border-top:1px solid var(--border); display:flex; z-index:30;
     padding-bottom:env(safe-area-inset-bottom);
+    padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right);
     overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none;
   }
   nav.tabbar::-webkit-scrollbar{ display:none; }
@@ -100,10 +102,11 @@
   nav.tabbar button.active{color:var(--lime);}
 
   nav.subnav{
-    position:fixed; bottom:44px; left:0; right:0; background:var(--card);
+    position:fixed; bottom:calc(44px + env(safe-area-inset-bottom)); left:0; right:0; background:var(--card);
     box-shadow:0 -2px 8px rgba(0,0,0,0.35);
     border-top:1px solid var(--border); border-bottom:1px solid var(--border);
     display:flex; z-index:29; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none;
+    padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right);
   }
   nav.subnav::-webkit-scrollbar{ display:none; }
   nav.subnav button{
@@ -220,6 +223,32 @@
   }
   #acBox .ac-item:last-child{border-bottom:none;}
   #acBox .ac-item:active{background:#252;}
+
+  /* Guía de escalamiento imprimible */
+  .scaling-guide-overlay{
+    position:fixed; inset:0; z-index:500; background:var(--bg);
+    overflow-y:auto; padding:18px; padding-bottom:calc(24px + env(safe-area-inset-bottom));
+    padding-top:calc(18px + env(safe-area-inset-top));
+  }
+  .scaling-guide-toolbar{ display:flex; gap:10px; margin-bottom:16px; }
+  .scaling-guide-toolbar .btn{ margin-top:0; flex:1; }
+  .scaling-guide-content h1{ font-size:26px; color:var(--lime); margin-bottom:2px; }
+  .scaling-guide-content .sg-sub{ font-size:12px; color:var(--gray-dim); letter-spacing:1px; margin-bottom:18px; text-transform:uppercase; }
+  .scaling-guide-content .sg-item{ margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid var(--border); }
+  .scaling-guide-content .sg-item h3{ color:var(--white); font-size:16px; margin-bottom:6px; }
+  .scaling-guide-content .sg-item ol{ margin:0 0 0 18px; font-size:13px; color:var(--gray); line-height:1.6; }
+  .scaling-guide-content .sg-footer{ margin-top:20px; font-size:11px; color:var(--gray-dim); text-align:center; letter-spacing:0.5px; }
+  @media print{
+    body *{ visibility:hidden; }
+    .scaling-guide-overlay, .scaling-guide-overlay *{ visibility:visible; }
+    .scaling-guide-overlay{ position:static; background:#fff; padding:0; }
+    .no-print{ display:none !important; }
+    .scaling-guide-content h1, .scaling-guide-content .sg-item h3{ color:#000; }
+    .scaling-guide-content .sg-sub, .scaling-guide-content .sg-footer{ color:#555; }
+    .scaling-guide-content .sg-item{ border-bottom:1px solid #ccc; break-inside:avoid; }
+    .scaling-guide-content .sg-item ol{ color:#222; }
+    .scaling-guide-content{ color:#000; }
+  }
 </style>
 </head>
 <body>
@@ -803,6 +832,7 @@
     <div class="card">
       <h2>Movimientos</h2>
       <input type="text" id="movSearch" placeholder="Buscar movimiento..." oninput="renderMov()">
+      <button class="btn" style="margin-top:10px;" onclick="openScalingGuide()">📄 Guía de escalamiento completa (imprimir / PDF)</button>
     </div>
     <div class="card" id="movList"></div>
 
@@ -1030,6 +1060,18 @@
   <button onclick="showView('prog')" data-tab="prog" id="progTabBtn">Prog</button>
   <button onclick="showView('athletes')" data-tab="athletes" id="coachTabBtn" style="display:none;">Alumnos</button>
 </nav>
+
+<!-- Guía de escalamiento imprimible (pedido de Luis: algo más rápido para los
+     alumnos que buscar movimiento por movimiento). Fuera del sistema de vistas
+     normal a propósito — se imprime/exporta a PDF con window.print(), y
+     @media print oculta todo lo demás para que salga sólo esto en la hoja. -->
+<div id="scalingGuideOverlay" class="scaling-guide-overlay" style="display:none;">
+  <div class="scaling-guide-toolbar no-print">
+    <button class="btn" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+    <button class="btn danger" onclick="closeScalingGuide()">Cerrar</button>
+  </div>
+  <div id="scalingGuideContent" class="scaling-guide-content"></div>
+</div>
 
 <script>
 function escapeHtml(str){
@@ -8396,6 +8438,30 @@ function renderMov(){
     .map(w=>`<div class="score-item"><span><b>${w.name}</b><br><span class="muted">${w.desc}</span></span>
       <a href="${ytSearchUrl(w.name+' hero wod', 'CrossFit')}" target="_blank" rel="noopener" style="color:var(--lime); font-size:11px; text-decoration:none; flex-shrink:0;">▶ Video</a>
     </div>`).join('');
+}
+
+// Fase 26 (Luis: "podría salir un estilo pdf que fuera más rápido para los
+// alumnos y no buscar movimientos uno por uno"): una sola hoja con TODAS las
+// escaleras de MOVEMENT_SCALING (misma fuente de datos que "Ver escalamiento"
+// en Movimientos — nunca se desincroniza), pensada para imprimir/guardar como
+// PDF con window.print() en vez de mantener un documento aparte.
+function openScalingGuide(){
+  const nombres = [...new Set(Object.keys(MOVEMENT_SCALING).filter(n=>n!=='Wall Balls'))].sort((a,b)=>a.localeCompare(b,'es'));
+  const items = nombres.map(n=>`
+    <div class="sg-item">
+      <h3>${n}</h3>
+      <ol>${MOVEMENT_SCALING[n].map(step=>`<li>${step}</li>`).join('')}</ol>
+    </div>`).join('');
+  document.getElementById('scalingGuideContent').innerHTML = `
+    <h1>CSL TRAINING</h1>
+    <div class="sg-sub">Guía de escalamiento — Coach Luis Casali</div>
+    ${items}
+    <div class="sg-footer">CF-L3 · CCFT · USAW L1 · HYROX Official Coach — @luis_casali</div>
+  `;
+  document.getElementById('scalingGuideOverlay').style.display = 'block';
+}
+function closeScalingGuide(){
+  document.getElementById('scalingGuideOverlay').style.display = 'none';
 }
 
 /* ---------------- BENCHMARKS: Girls & Hero WODs ---------------- */
