@@ -4991,6 +4991,9 @@ function _crossfitPickMovement(pattern, wi, ti, opts){
   // se usa el pool sin filtrar. Mismo criterio que Fix 2: nunca bloqueo duro, solo
   // desplaza la probabilidad, y corre ANTES de la ponderación por nivel para que
   // ambas señales convivan sin pisarse.
+  // Fase 26: se guarda el pool ANTES del filtro de familia — hace falta como
+  // red de respaldo más abajo (ver comentario junto a "poolAntesDeFamilia").
+  const poolAntesDeFamilia = pool;
   if(opts._prevFamiliaEquipo){
     const poolSinFamiliaRepetida = pool.filter(name => _crossfitFamiliaEquipo(name) !== opts._prevFamiliaEquipo);
     if(poolSinFamiliaRepetida.length) pool = poolSinFamiliaRepetida;
@@ -5004,15 +5007,35 @@ function _crossfitPickMovement(pattern, wi, ti, opts){
   if(!pool.length) return null; // patrón sin candidatos válidos tras filtrar (ver REPAIR)
 
   const used = opts._used;
+  // Fase 26: memoria adicional de las últimas 2 semanas completas (ver
+  // declaración de _crossfit26RecentWodMovs) — mismo criterio de "evitar si
+  // hay alternativa real" que `used`, nunca bloquea (null para los otros 5
+  // enfoques, así que esta rama queda inerte para ellos).
+  const recent = opts._recentWodMovs;
+  const enConflicto = m => (used && used.has(m)) || (recent && recent.has(m));
   // Fase CrossFit 11: la semilla de regeneración desplaza el índice de selección —
   // mismo mecanismo de dispersión por multiplicador primo que ya usa todo el motor
   // (evita colisión con los desplazamientos de wi/ti/slot ya existentes).
   let idx = _movIdx(wi, ti + (opts._regenSeed||0)*17);
   let mov = _pick(pool, idx);
-  if(used){
+  if(used || recent){
     let tries = 0;
-    while(used.has(mov) && tries < pool.length){ tries++; mov = _pick(pool, idx+tries); }
-    used.add(mov);
+    while(enConflicto(mov) && tries < pool.length){ tries++; mov = _pick(pool, idx+tries); }
+    // Fase 26 (hallazgo real, principiante+limitado, pool "combo" de 5 movimientos
+    // en sólo 2 familias): el filtro de familia de arriba puede dejar un pool tan
+    // chico que TODAS sus opciones ya están en conflicto con `used`/`recent` —
+    // ej. pool baja de 5 a 2 candidatos y los 2 que quedan están ambos ocupados.
+    // Evitar repetir el MISMO movimiento pesa más que evitar repetir la MISMA
+    // familia de equipamiento, así que si el pool reducido no tiene ninguna
+    // opción libre, se reintenta sobre el pool COMPLETO (antes del filtro de
+    // familia) antes de resignarse a repetir.
+    if(enConflicto(mov) && poolAntesDeFamilia.length > pool.length){
+      let movAmplio = _pick(poolAntesDeFamilia, idx);
+      let triesAmplio = 0;
+      while(enConflicto(movAmplio) && triesAmplio < poolAntesDeFamilia.length){ triesAmplio++; movAmplio = _pick(poolAntesDeFamilia, idx+triesAmplio); }
+      if(!enConflicto(movAmplio)) mov = movAmplio;
+    }
+    if(used) used.add(mov);
   }
   return mov;
 }
@@ -6604,6 +6627,16 @@ function autoGenerateProgram(){
   // Fase 18 (Fix 3): memoria de la familia de equipamiento DOMINANTE del último
   // día generado — mismo criterio de cruce de semana que las dos anteriores.
   let _crossfit18PrevFamilia = null;
+  // Fase 26 (Luis: "se repetía mucho el dumbbell manmaker"): _used (línea de
+  // abajo) sólo carga el último DÍA de la semana anterior, no la semana
+  // completa — con un pool chico (ej. patrón 'combo' para principiante +
+  // equipamiento limitado, 5 candidatos) eso deja la puerta abierta a repetir
+  // el mismo movimiento en semanas consecutivas (confirmado por simulación:
+  // hasta 3 de las primeras 4 semanas con DB Man-Maker en ese escenario).
+  // Memoria adicional de las últimas 2 semanas completas de movimientos de WOD
+  // — capa extra sobre _used, nunca lo reemplaza, mismo criterio de "evitar
+  // si hay alternativa real, nunca bloquear" que ya usa todo el motor.
+  let _crossfit26RecentWodMovs = [];
 
   // Fase 17C: un benchmark (Girls/Hero WOD) por cada bloque de 4 semanas
   // completo — solo CrossFit. Posiciones y benchmarks se calculan UNA VEZ antes
@@ -6635,6 +6668,12 @@ function autoGenerateProgram(){
     opts._used = (focus==='crossfit' && _crossfit17bUltimoDiaMovs)
       ? new Set(_crossfit17bUltimoDiaMovs)
       : new Set();   // memoria de movimientos de ESTA semana (evita repetir entre días)
+    // Fase 26: unión de las últimas 2 semanas completas — capa extra sobre
+    // _used, sólo CrossFit (queda null para los otros 5 enfoques).
+    opts._recentWodMovs = (focus==='crossfit')
+      ? new Set(_crossfit26RecentWodMovs.flatMap(s=>[...s]))
+      : null;
+    const _crossfit26EstaSemanaMovs = new Set();
     templates.forEach((tmpl, ti)=>{
       const dayIdx = dayIndices[ti];
       // Fase 18 (Fix 2 y 3): se pasa la memoria del día anterior justo antes de
@@ -6669,6 +6708,7 @@ function autoGenerateProgram(){
             .map(s=>{ const m=s.match(/^(.+?) \(\w+, interferencia/); return m?m[1]:null; }).filter(Boolean);
           _crossfit18PrevNSlots = _nombresDia.length;
           _crossfit18PrevFamilia = _crossfit18DominantFamilia(_nombresDia);
+          _nombresDia.forEach(n=>_crossfit26EstaSemanaMovs.add(n));
         }
       }
       // Fase 17C: si este día (wi, ti) coincide con la posición calculada del
@@ -6741,6 +6781,14 @@ function autoGenerateProgram(){
         if(btn) btn.style.display = 'block';
       }
     });
+    // Fase 26: cierra la semana — la memoria de "últimas 2 semanas" sólo debe
+    // reflejar semanas YA TERMINADAS, nunca la semana en curso (por eso se
+    // arma en _crossfit26EstaSemanaMovs durante el forEach y se agrega recién
+    // acá, no dentro del forEach).
+    if(focus==='crossfit'){
+      _crossfit26RecentWodMovs.push(_crossfit26EstaSemanaMovs);
+      if(_crossfit26RecentWodMovs.length > 2) _crossfit26RecentWodMovs.shift();
+    }
     // Fase 18 (Fix 11): sábado largo — completamente al margen del bucle de
     // templates.forEach de arriba (día 5, no está en dayIndices). Se genera una vez
     // por semana, con su propia semilla (offset 500 dentro de _crossfitSaturdayLargo),
