@@ -3194,11 +3194,19 @@ function _gymCount(opts){
   return { skill, str, acc };
 }
 
+// Fase 26 (hallazgo real, lectura de un programa de 52 semanas): "15+wi*5"
+// crecía SIN TECHO — para la semana 26 ya pedía "L-sit Pull-up 3x140s" (más de
+// 2 minutos por serie) y "Handstand Push-up progresión — 5 series de 135s",
+// algo que ningún humano puede sostener. Techo de 45s (se alcanza en la semana
+// 6), coherente con el propio criterio de estas líneas ("sin llegar al fallo",
+// "descanso completo") — es práctica técnica, no una prueba de resistencia.
+function _holdDuration(wi){ return Math.min(15 + wi*5, 45); }
+
 // Series de práctica de skill: cortas, con descanso completo, sin buscar fatiga
 function _gymSkillLine(mov, wi, opts){
   const series = 3 + Math.min(wi, 2);
   if(/Hold|Walk|L-sit|Handstand|\bHS\b|Hang/i.test(mov)){
-    return `${mov} — ${series} series de ${15+wi*5}s (práctica, descanso completo)`;
+    return `${mov} — ${series} series de ${_holdDuration(wi)}s (práctica, descanso completo)`;
   }
   return `${mov} — ${series} series de ${3+Math.min(wi,3)} reps (técnica, sin llegar al fallo)`;
 }
@@ -3209,7 +3217,7 @@ function _gymStrengthLine(mov, wi, opts, k){
   const reps = (k===0 ? 6 : 8) + Math.min(wi, 3);
   // Fase 26: wavePos en vez de wi para el RPE — ver _wavePos().
   const rpe  = Math.min(_rpe(_wavePos(wi, opts), opts.level, opts.priorFeedback), 9);
-  if(/Hold|L-sit|Hang/i.test(mov)) return `${mov} ${sets}x${15+wi*5}s`;
+  if(/Hold|L-sit|Hang/i.test(mov)) return `${mov} ${sets}x${_holdDuration(wi)}s`;
   return `${mov} ${sets}x${reps} (RPE ${rpe})`;
 }
 
