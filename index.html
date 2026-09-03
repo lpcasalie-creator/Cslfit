@@ -2595,6 +2595,25 @@ function _scaleForBeginner(mov, wi, level, patternKey){
   return mov;
 }
 
+// Fase 26 (hallazgo real, lectura de un programa de 16 semanas): _rpe()/_pct1RM()
+// subían con wi SIN TOPE de vuelta — llegaban al techo del nivel (ej. RPE9/85%
+// para intermedio) en la semana 3 y se quedaban PEGADOS ahí el resto del programa
+// entero (semanas 5 a 52), con la única interrupción siendo la semana de descarga
+// cada 4 semanas — que además NO bajaba el %1RM (sólo el RPE y las series, ver
+// _applyDeload): un atleta real terminaba entrenando al 85% de su 1RM en Back
+// Squat semana tras semana, sin ninguna onda de carga real. _wavePos() devuelve
+// la posición dentro de la ola de carga actual (3 semanas de progresión + 1 de
+// descarga, ciclo que se repite) en vez del número de semana absoluto — sólo
+// cuando el programa es lo bastante largo para tener descargas periódicas
+// (weeksCount>=8, mismo umbral que ya usa isMidCycleDeload); en programas cortos
+// sin descarga intermedia la progresión sigue siendo lineal hacia el techo, igual
+// que siempre.
+function _wavePos(wi, opts){
+  const weeksCount = opts && opts.weeksCount;
+  if(!weeksCount || weeksCount < 8) return wi;
+  return wi % 4;
+}
+
 // Progresión de %1RM para los levantamientos de Fuerza — pedido de Luis: prefiere
 // porcentaje de 1RM en vez de rango de reps + RPE (sin calcular el kilo real, eso
 // lo resuelve el atleta con su propio máximo, igual que hoy la tabla %BS). Misma
@@ -2890,10 +2909,13 @@ function _fuerzaDay(patternKey, domain='corto'){
         strLines.push(line);
         _mv.push(mkMovement({name:mov, pattern:key, sets:3, reps:_capReps(mov,5), notes:'Carga moderada, no buscar máximo', raw:line}));
       } else {
-        const baseSets = wi===0?4:wi===1?4:5;
-        const reps = _capReps(mov, wi===0?8:wi===1?6:5);
+        // Fase 26: wavePos en vez de wi — evita que sets/reps/RPE suban una vez
+        // y se queden pegados al techo el resto del programa (ver _wavePos()).
+        const wavePos = _wavePos(wi, opts);
+        const baseSets = wavePos===0?4:wavePos===1?4:5;
+        const reps = _capReps(mov, wavePos===0?8:wavePos===1?6:5);
         const sets = _lvlSets(k===0?baseSets:baseSets-1, opts.level);
-        const rpe = Math.min(_rpe(wi, opts.level, opts.priorFeedback), 9); // el 10 se reserva para el test
+        const rpe = Math.min(_rpe(wavePos, opts.level, opts.priorFeedback), 9); // el 10 se reserva para el test
         const line = `${mov} ${sets}x${reps} (RPE ${rpe})`;
         strLines.push(line);
         _mv.push(mkMovement({name:mov, pattern:key, sets, reps, rpe, raw:line}));
@@ -3062,9 +3084,11 @@ function _musculacionDay(groupKey, domain){
     }
 
     // Progresión de hipertrofia: primero sube volumen, después aprieta el rango de reps
-    const sets = wi===0?3 : wi===1?3 : 4;
-    const reps = wi===0?12 : wi===1?10 : wi===2?10 : 8;
-    const rpe  = Math.min(_rpe(wi, opts.level, opts.priorFeedback), 9);
+    // Fase 26: wavePos en vez de wi — ver _wavePos().
+    const wavePos = _wavePos(wi, opts);
+    const sets = wavePos===0?3 : wavePos===1?3 : 4;
+    const reps = wavePos===0?12 : wavePos===1?10 : wavePos===2?10 : 8;
+    const rpe  = Math.min(_rpe(wavePos, opts.level, opts.priorFeedback), 9);
 
     // De dónde sale el 2º compuesto primario: de un grupo complementario, no del mismo.
     // Un día de piernas con 2 primarios debe ser sentadilla + bisagra, no sentadilla + sentadilla.
@@ -3183,7 +3207,8 @@ function _gymSkillLine(mov, wi, opts){
 function _gymStrengthLine(mov, wi, opts, k){
   const sets = _lvlSets(k===0 ? 4 : 3, opts.level);
   const reps = (k===0 ? 6 : 8) + Math.min(wi, 3);
-  const rpe  = Math.min(_rpe(wi, opts.level, opts.priorFeedback), 9);
+  // Fase 26: wavePos en vez de wi para el RPE — ver _wavePos().
+  const rpe  = Math.min(_rpe(_wavePos(wi, opts), opts.level, opts.priorFeedback), 9);
   if(/Hold|L-sit|Hang/i.test(mov)) return `${mov} ${sets}x${15+wi*5}s`;
   return `${mov} ${sets}x${reps} (RPE ${rpe})`;
 }
@@ -5440,12 +5465,14 @@ function _crossfitSkillPoolAmplio(opts){
 }
 
 function _crossfit17a2PrescribirOlimpicoNativo(mov, opts, wi){
-  const rpeFinal = Math.min(_rpe(wi, opts.level, opts.priorFeedback), 9);
+  // Fase 26: wavePos en vez de wi — ver _wavePos().
+  const rpeFinal = Math.min(_rpe(_wavePos(wi, opts), opts.level, opts.priorFeedback), 9);
   return `${mov} 3-3-2-2-1-1 (RPE hasta ${rpeFinal})`;
 }
 function _crossfit17a2PrescribirRectas(mov, opts, wi, repsRango){
   if(/\d+\s*x\s*\d+/i.test(mov)) return mov; // ya trae prescripción embebida (bug preexistente, no se toca)
-  const pct = _pct1RM(wi, opts.level, opts.priorFeedback);
+  // Fase 26: wavePos en vez de wi — ver _wavePos().
+  const pct = _pct1RM(_wavePos(wi, opts), opts.level, opts.priorFeedback);
   const reps = _repsForPct(pct);
   return `${mov} ${_lvlSets(3,opts.level)}x${reps} @ ${pct}%`;
 }
@@ -6337,9 +6364,17 @@ function _applyDeload(day){
   // movimientos, y el texto se deriva al final con renderSessionToLegacy().
   // Las expresiones regulares que quedan operan sólo sobre `raw`, la muleta
   // temporal de la Fase 1A; no son el mecanismo de decisión.
+  // Fase 26 (hallazgo real): esta función ya bajaba el RPE a "6-7" en descarga,
+  // pero un levantamiento prescrito por %1RM (_pct1RM, CrossFit) no tiene "RPE"
+  // en su texto — sólo "@ NN%" — así que la intensidad real NO bajaba en la
+  // semana de descarga, sólo 1 serie menos a la MISMA carga (ej. "Back Squat 2x2
+  // @ 85%" en plena semana de descarga, prácticamente al 1RM). Se agrega la
+  // misma reducción de intensidad que ya recibe el RPE, aplicada al %1RM: -20
+  // puntos porcentuales, piso 50% (rango típico real de una descarga real).
   const reduceSetsRaw = (txt) => txt
     .replace(/(\d+)x(\d+)/g, (m, sets, reps) => `${Math.max(2, parseInt(sets)-1)}x${reps}`)
-    .replace(/RPE\s*\d+(-\d+)?/g, 'RPE 6-7');
+    .replace(/RPE\s*\d+(-\d+)?/g, 'RPE 6-7')
+    .replace(/@\s*(\d+)%/g, (m, pct) => `@ ${Math.max(50, parseInt(pct)-20)}%`);
   const reduceCapRaw = (txt) => txt.replace(/(\d+)'/g, (m, cap) => `${Math.max(5, Math.round(parseInt(cap)*0.7))}'`);
   const reduceCapNum = (n) => Math.max(5, Math.round(n * 0.7));
 
@@ -6573,6 +6608,10 @@ function autoGenerateProgram(){
     restriction: document.getElementById('genRestriction').value,
     priorFeedback: document.getElementById('genPriorFeedback').value,
     daysPerWeek, // usado por CrossFit (_crossfitWeeklyDomains) — inerte para los otros 5 enfoques
+    // Fase 26: largo total del programa — lo necesita _wavePos() para saber si
+    // corresponde repetir la ola de carga cada 4 semanas (sólo cuando el programa
+    // es lo bastante largo para tener descargas periódicas, weeksCount>=8).
+    weeksCount,
   };
   // Fase 16 (conexión a interfaz): si el coach eligió un programa anterior en
   // "Continuar desde", ya se precargaron sus firmas de WOD al seleccionarlo
