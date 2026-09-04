@@ -6766,7 +6766,14 @@ function autoGenerateProgram(){
     const isTest = (wi === weeksCount-1);
     const isPreTestDeload = weeksCount >= 3 && wi === weeksCount-2 && !isTest;
     // Descarga periódica 3:1 (cada 4ta semana), solo en ciclos largos y sin chocar con la descarga pre-test
-    const isMidCycleDeload = weeksCount >= 8 && !isTest && !isPreTestDeload && (wi+1) % 4 === 0 && wi <= weeksCount-4;
+    // Fase 26 (hallazgo real): "wi <= weeksCount-4" dejaba pasar una descarga de
+    // ciclo a sólo 2 semanas de la descarga pre-test para weeksCount ≡ 3 (mod 4)
+    // — ej. weeksCount=11: descarga semana 8, UNA semana de trabajo real (9), y
+    // otra descarga en la semana 10 antes del test de la 11. Dos descargas casi
+    // pegadas con una sola semana de trabajo real entre medio, en vez de la
+    // descarga única antes del test que ya usan bien el resto de los weeksCount.
+    // Se exige al menos 3 semanas libres antes de la descarga pre-test.
+    const isMidCycleDeload = weeksCount >= 8 && !isTest && !isPreTestDeload && (wi+1) % 4 === 0 && wi <= weeksCount-4 && (weeksCount-2) - wi >= 3;
     const isDeload = isPreTestDeload || isMidCycleDeload;
     opts._used = (focus==='crossfit' && _crossfit17bUltimoDiaMovs)
       ? new Set(_crossfit17bUltimoDiaMovs)
@@ -6922,7 +6929,9 @@ function regenerateCrossfitDay(wi, dayIdx){
 
   const isTest = (wi === weeksCount-1);
   const isPreTestDeload = weeksCount >= 3 && wi === weeksCount-2 && !isTest;
-  const isMidCycleDeload = weeksCount >= 8 && !isTest && !isPreTestDeload && (wi+1) % 4 === 0 && wi <= weeksCount-4;
+  // Fase 26: mismo fix que autoGenerateProgram() — ver ese comentario. Exige al
+  // menos 3 semanas libres antes de la descarga pre-test.
+  const isMidCycleDeload = weeksCount >= 8 && !isTest && !isPreTestDeload && (wi+1) % 4 === 0 && wi <= weeksCount-4 && (weeksCount-2) - wi >= 3;
   const isDeload = isPreTestDeload || isMidCycleDeload;
 
   // Fase CrossFit 11: contador por día — 0 = generación inicial (ya en pantalla),
