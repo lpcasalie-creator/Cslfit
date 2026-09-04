@@ -6485,9 +6485,16 @@ function _applyDeload(day){
   // @ 85%" en plena semana de descarga, prácticamente al 1RM). Se agrega la
   // misma reducción de intensidad que ya recibe el RPE, aplicada al %1RM: -20
   // puntos porcentuales, piso 50% (rango típico real de una descarga real).
+  // Fase 27 (mismo hallazgo, formato distinto): _crossfit17a2PrescribirOlimpicoNativo
+  // (Snatch/Clean/Jerk en escalera "3-3-2-2-1-1") escribe "(RPE hasta N)", no
+  // "(RPE N)" — el regex de arriba nunca hizo match con eso, así que el día
+  // olímpico de una semana de descarga podía quedar CON MÁS intensidad que una
+  // semana normal (confirmado con simulación: "Squat Snatch ... RPE hasta 9" en
+  // plena semana de descarga, semana 11 de un ciclo de 12). Se acepta el "hasta"
+  // opcional en el regex — mismo destino "RPE 6-7" que ya usa el resto del motor.
   const reduceSetsRaw = (txt) => txt
     .replace(/(\d+)x(\d+)/g, (m, sets, reps) => `${Math.max(2, parseInt(sets)-1)}x${reps}`)
-    .replace(/RPE\s*\d+(-\d+)?/g, 'RPE 6-7')
+    .replace(/RPE\s*(hasta\s*)?\d+(-\d+)?/g, 'RPE 6-7')
     .replace(/@\s*(\d+)%/g, (m, pct) => `@ ${Math.max(50, parseInt(pct)-20)}%`);
   const reduceCapRaw = (txt) => txt.replace(/(\d+)'/g, (m, cap) => `${Math.max(5, Math.round(parseInt(cap)*0.7))}'`);
   const reduceCapNum = (n) => Math.max(5, Math.round(n * 0.7));
