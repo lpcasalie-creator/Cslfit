@@ -8479,6 +8479,19 @@ function buildMovementCatalog(){
     if(rebuilt === name) e.prescriptionParse = parsed;   // sólo si reconstruye EXACTO
   });
 
+  // Fase 27 (auditoría de "equipo limitado"): Sled Push/Sled Drag nunca pasan por
+  // GEN_POOLS/MUSC_POOLS (son parte del catálogo propio de CrossFit, no de Fuerza/
+  // Musculación/Gimnasia/Cardio), así que nunca reciben equipment vía addContext() —
+  // quedan en null, el mismo valor que Air Squat o Burpee, que sí son universales.
+  // Confirmado con simulación: 46 de 500 días con "Equipo Limitado" seleccionado
+  // igual proponían Sled Push/Drag en el WOD. Un sled es equipamiento específico de
+  // box, no algo que un gimnasio con equipo limitado tenga por defecto — mismo
+  // criterio ya aplicado a GHD Sit-up (equipment='completo'). Sólo fija equipment,
+  // no toca contexts[] ni pattern (ambos ya resueltos arriba de esta función).
+  ['Sled Push', 'Sled Drag'].forEach(name=>{
+    if(catalog[name] && !catalog[name].equipment) catalog[name].equipment = 'completo';
+  });
+
   return { catalog, order };
 }
 
