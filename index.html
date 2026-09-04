@@ -9258,14 +9258,27 @@ async function delScore(id){
 const APP_VERSION = 'v7.19-fase18-completa';
 const SUPABASE_URL = 'https://cpjrmkrokowzbhajfjqf.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_gQ4HJ7s4G-NkLRROIL6qiQ_ef8Lc4LR';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-    storage: window.localStorage
-  }
-});
+// Fase 28 (hallazgo real, analizando la app como usuaria/o): si el script de
+// Supabase (CDN externo, <head>) no llega a cargar — corte de red, firewall,
+// ad-blocker, caída puntual del CDN — window.supabase queda undefined y esta
+// línea tiraba una excepción SIN CAPTURAR a nivel de módulo, deteniendo la
+// ejecución de TODO el resto del script (incluida la definición de
+// initAuth() y su llamada más abajo). El resultado: la persona se queda
+// viendo "Verificando sesión..." para siempre, sin ningún mensaje ni forma
+// de saber qué pasó ni de reintentar. Se atrapa acá; más abajo, junto a la
+// llamada a initAuth(), se reemplaza esa pantalla por un error claro con
+// botón de reintentar cuando `sb` no se pudo crear.
+let sb = null;
+try{
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storage: window.localStorage
+    }
+  });
+}catch(e){ /* sb queda null — manejado junto a initAuth() */ }
 
 let currentUser = null;
 let currentProfile = null;
@@ -9475,7 +9488,20 @@ async function initAuth(){
     if(event === 'SIGNED_IN' && session && !currentUser){ onLoggedIn(session.user); }
   });
 }
-initAuth();
+function showConnectionError(){
+  document.getElementById('authLoading').innerHTML = `
+    <p class="muted" style="color:#ff8c8c;">No pudimos conectar con el servidor. Revisá tu conexión a internet.</p>
+    <button class="btn" style="margin-top:14px;" onclick="location.reload()">Reintentar</button>
+  `;
+}
+// Fase 28: si `sb` no se pudo crear (ver el try/catch de arriba), ni entrar a
+// initAuth() tiene sentido — cada llamada a sb.auth/sb.from de ahí en más
+// tiraría "Cannot read properties of null", y peor: initAuth() de todos
+// modos terminaría mostrando el formulario de login normal (su propio catch
+// interno se traga el error y sigue "al login"), dejando a la persona
+// escribir su contraseña para chocar con el mismo problema en signInWithPassword().
+// Se corta acá con un error explícito y un botón de reintentar.
+if(sb){ initAuth(); } else { showConnectionError(); }
 
 /* ---------------- PWA: service worker + prompt de instalación ---------------- */
 if('serviceWorker' in navigator){
