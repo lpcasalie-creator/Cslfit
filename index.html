@@ -368,7 +368,7 @@
       <h3>Accesos rápidos</h3>
       <div class="grid2">
         <button class="btn small" onclick="showView('rm')">1RM</button>
-        <button class="btn small secondary" onclick="showView('prog')">Mi Programa</button>
+        <button class="btn small secondary" onclick="showView('prog')" id="homeMiProgramaBtn">Mi Programa</button>
         <button class="btn small secondary" onclick="showView('pct')">% BS</button>
         <button class="btn small secondary" onclick="showView('scores')">Scores</button>
       </div>
@@ -1051,7 +1051,7 @@
   <button data-group="wod" onclick="showGroup('wod')">WOD</button>
   <button data-group="rm" onclick="showGroup('rm')">RM</button>
   <button data-group="scores" onclick="showGroup('scores')">Scores</button>
-  <button data-group="prog" onclick="showGroup('prog')">Programación</button>
+  <button data-group="prog" onclick="showGroup('prog')" id="progGroupTabBtn">Programación</button>
   <button data-group="mov" onclick="showGroup('mov')">Movimientos</button>
 </nav>
 <nav class="subnav" id="subnav-wod" style="display:none;">
@@ -9438,7 +9438,19 @@ async function onLoggedIn(user){
   const roleWrap = document.getElementById('inviteRoleWrap');
   if(roleWrap) roleWrap.style.display = (profile && profile.is_super_admin) ? 'block' : 'none';
   const isTrackingOnly = profile && profile.role === 'athlete' && profile.plan !== 'coached';
+  // Analizando la app como usuaria/o: esto sólo ocultaba el acceso corto dentro
+  // del subnav de Programación (progTabBtn) — pero un alumno "solo seguimiento"
+  // seguía viendo el botón PRINCIPAL "Programación" de la tabbar de abajo (sin
+  // id, nunca se tocaba acá) Y el atajo "Mi Programa" de Accesos rápidos en
+  // Home (sin ninguna condición, siempre visible) — ambos lo llevaban a la
+  // misma vista "prog" con "Sin programa activo asignado", una función que no
+  // le corresponde a su plan. Se ocultan los 3 puntos de entrada con la MISMA
+  // condición, no sólo el atajo redundante del subnav.
   document.getElementById('progTabBtn').style.display = isTrackingOnly ? 'none' : 'block';
+  const progGroupBtn = document.getElementById('progGroupTabBtn');
+  if(progGroupBtn) progGroupBtn.style.display = isTrackingOnly ? 'none' : 'block';
+  const homeMiProgramaBtn = document.getElementById('homeMiProgramaBtn');
+  if(homeMiProgramaBtn) homeMiProgramaBtn.style.display = isTrackingOnly ? 'none' : 'block';
   document.getElementById('homeUserEmail').textContent = user.email;
   const wus = document.getElementById('weightUnitSelect'); if(wus) wus.value = currentWeightUnit;
   const wl = document.getElementById('rmWeightLabel'); if(wl) wl.textContent = `Peso (${currentWeightUnit})`;
