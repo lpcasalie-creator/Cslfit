@@ -5796,24 +5796,59 @@ function _crossfitWeekPatterns(wi, daysPerWeek){
   const base = Array.from({length:daysPerWeek}, (_,ti)=>_pick(CROSSFIT_PATTERN_ROTATION, _crossfitMix32((wi*2654435761 + ti*40503 + 271) >>> 0)));
   const minBasics = CROSSFIT_WEEK_MIN_BASICS[daysPerWeek] || Math.min(3, daysPerWeek);
   const presentes = CROSSFIT_BASIC_PATTERNS.filter(b=>base.includes(b));
-  if(presentes.length >= minBasics) return base;
-
-  const faltantes = CROSSFIT_BASIC_PATTERNS.filter(b=>!base.includes(b)).slice(0, minBasics - presentes.length);
   const out = base.slice();
-  const countOf = (p)=> out.filter(x=>x===p).length;
-  const isAdjacentSafe = (ti, pattern)=>
-    (ti===0 || out[ti-1]!==pattern) && (ti===out.length-1 || out[ti+1]!==pattern);
 
-  faltantes.forEach(faltante=>{
-    const candidatos = out
-      .map((p, ti)=>({ p, ti }))
-      .filter(({p, ti})=> p!==faltante && isAdjacentSafe(ti, faltante))
-      .sort((a,b)=>{
-        const score = (x)=> countOf(x.p) > 1 ? 0 : (!CROSSFIT_BASIC_PATTERNS.includes(x.p) ? 1 : 2);
-        return score(a) - score(b) || a.ti - b.ti;
+  if(presentes.length < minBasics){
+    const faltantes = CROSSFIT_BASIC_PATTERNS.filter(b=>!base.includes(b)).slice(0, minBasics - presentes.length);
+    const countOf = (p)=> out.filter(x=>x===p).length;
+    const isAdjacentSafe = (ti, pattern)=>
+      (ti===0 || out[ti-1]!==pattern) && (ti===out.length-1 || out[ti+1]!==pattern);
+
+    faltantes.forEach(faltante=>{
+      const candidatos = out
+        .map((p, ti)=>({ p, ti }))
+        .filter(({p, ti})=> p!==faltante && isAdjacentSafe(ti, faltante))
+        .sort((a,b)=>{
+          const score = (x)=> countOf(x.p) > 1 ? 0 : (!CROSSFIT_BASIC_PATTERNS.includes(x.p) ? 1 : 2);
+          return score(a) - score(b) || a.ti - b.ti;
+        });
+      if(candidatos.length) out[candidatos[0].ti] = faltante;
+    });
+  }
+
+  // Fase 27: lo anterior sólo evita que un patrón FALTANTE insertado quede
+  // pegado a sí mismo — pero nunca revisa si el `base` mezclado ya trae de
+  // fábrica el MISMO patrón en dos días seguidos (p.ej. 'pull' el martes Y
+  // el miércoles: tirones pesados dos días seguidos sin descanso entre
+  // medio). Confirmado con simulación de 16 semanas (semana 10, días 3 y 4
+  // de un programa de 4 días/semana, ambos 'pull'). Se repara intercambiando
+  // con la posición válida más lejana (mismo criterio que ya usa
+  // _crossfitWeeklyDomains para separar dos 'largo' seguidos) — el intercambio
+  // no cambia cuántas veces aparece cada patrón en la semana, así que no
+  // afecta la cobertura mínima de básicos ya garantizada arriba.
+  const sinAdyacentesRepetidos = (arr)=>{
+    for(let k=0; k<arr.length-1; k++){ if(arr[k]===arr[k+1]) return false; }
+    return true;
+  };
+  for(let i=0; i<out.length-1; i++){
+    if(out[i] !== out[i+1]) continue;
+    // Se prueba mover CUALQUIERA de los dos días del par duplicado (no sólo el
+    // segundo) — con semanas de 3 días, la única posición libre suele quedar
+    // más cerca de uno de los dos lados que del otro, y sólo uno de los dos
+    // intercambios resuelve el choque sin crear uno nuevo en otro lado.
+    let mejor=-1, mejorLado=-1, mejorDist=-1;
+    for(let j=0; j<out.length; j++){
+      if(j===i || j===i+1) continue;
+      [i, i+1].forEach(lado=>{
+        const trial = out.slice();
+        const tmp = trial[lado]; trial[lado] = trial[j]; trial[j] = tmp;
+        if(!sinAdyacentesRepetidos(trial)) return;
+        const dist = Math.abs(j-lado);
+        if(dist>mejorDist){ mejorDist=dist; mejor=j; mejorLado=lado; }
       });
-    if(candidatos.length) out[candidatos[0].ti] = faltante;
-  });
+    }
+    if(mejor>=0){ const tmp=out[mejorLado]; out[mejorLado]=out[mejor]; out[mejor]=tmp; }
+  }
   return out;
 }
 
