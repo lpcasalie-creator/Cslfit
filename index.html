@@ -3786,7 +3786,13 @@ function _crossfitCandidatePatterns(dayPattern){
    se calculan en cada llamada, tal como se aprobó. Sólo las usa _crossfitBuildMetcon()/
    _crossfitDay() — ninguna otra parte del sistema las conoce. */
 
-const CROSSFIT_TIME_TYPE = new Set(['Handstand Hold', 'L-sit']);
+// Fase 27 (hallazgo real, simulación de 4500 días): 'L-sit en anillas', 'Hollow
+// Hold' y 'Superman Hold' son isometrías estáticas igual que 'Handstand Hold'/
+// 'L-sit' — pero al no estar en esta lista caían en REPS por default, produciendo
+// prescripciones sin sentido ("4 L-sit en anillas", "16 Box Step-up · 3 L-sit en
+// anillas" en un EMOM real). Se agregan las 3 — mismo pool de rangos de segundos
+// por dificultad que ya usan Handstand Hold/L-sit, ninguna lógica nueva.
+const CROSSFIT_TIME_TYPE = new Set(['Handstand Hold', 'L-sit', 'L-sit en anillas', 'Hollow Hold', 'Superman Hold']);
 // Fase 26 (Luis: "Broad jump, no sale la distancia"): Broad Jump es, como
 // Handstand Walk, un movimiento de DISTANCIA — el rep count solo ("14 Broad
 // Jump") no dice nada sin saber cuánto debe avanzar cada salto o el total a
