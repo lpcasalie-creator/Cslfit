@@ -2545,10 +2545,25 @@ function _pick(pool, i){ return pool[((i % pool.length) + pool.length) % pool.le
 function _movIdx(wi, ti){ return wi + (ti||0)*2; }
 
 // Movimientos de potencia/olímpicos: nunca en reps altas, venga de donde venga
+// Fase 26 (hallazgo real, Sábado Largo): "66 Clean" en un Single de 10' —
+// 'Snatch' (la variante suelta) ya estaba protegida acá, pero 'Clean' y sus
+// variantes sueltas (Power/Hang/Hang Power/KB/DB Clean) NUNCA estuvieron en
+// esta lista — sólo sus versiones combinadas con jerk ("Clean and Jerk",
+// "Squat Clean + Split Jerk") lo estaban. Sin la protección, _crossfitDifficulty
+// las trataba como INTERMEDIATE genérico (8-12 reps), y en un Single "For Time"
+// esa cifra se multiplica por las rondas del WOD — de ahí el salto a 66.
 const LOW_REP_MOVEMENTS = ['Snatch','Clean and Jerk','Power Snatch','Power Clean + Push Jerk','Squat Snatch',
   'Squat Clean + Split Jerk','Push Jerk','Split Jerk','Power Jerk','Clean High Pull','Muscle Snatch',
   'Snatch Balance','Snatch Pull','Clean Pull','Halting Snatch Deadlift','DB Snatch','KB Snatch',
-  'DB Clean and Jerk (alternado)','DB Snatch alternado','DB High Pull','KB High Pull','Overhead Squat'];
+  'DB Clean and Jerk (alternado)','DB Snatch alternado','DB High Pull','KB High Pull','Overhead Squat',
+  'Power Clean','Hang Clean','KB Clean','DB Clean'];
+// Coincidencia EXACTA (no substring) para los 3 nombres sueltos donde un
+// substring normal atraparía de rebote a un movimiento COMBO ya protegido por
+// su propio mecanismo con un rango distinto (10-16, no 3) — "Squat Clean"
+// atraparía a "Squat Clean Thruster" (CROSSFIT_COMBO_MUY_COMPLEJO), y "Clean"
+// suelto atraparía a "Medicine Ball Clean" (combo de rep alta legítimo, no un
+// levantamiento pesado de barra).
+const LOW_REP_EXACT = new Set(['Clean', 'Squat Clean', 'Hang Squat Clean']);
 function _capReps(mov, reps){
   // Fase 2D: LOW_REP_MOVEMENTS.some(m=>mov.includes(m)) -> isLowRep(mov).
   // isLowRep() intenta identificar el movimiento canónico por prefijo (findMovementByText)
@@ -8367,7 +8382,7 @@ function buildMovementCatalog(){
   });
 
   order.forEach(name=>{
-    catalog[name].lowRep = LOW_REP_MOVEMENTS.some(sub => name.includes(sub));
+    catalog[name].lowRep = LOW_REP_MOVEMENTS.some(sub => name.includes(sub)) || LOW_REP_EXACT.has(name);
   });
 
   Object.keys(RESTRICTION_EXCLUDE).forEach(zona=>{
@@ -8516,7 +8531,7 @@ function getScaling(name){
 function isLowRep(text){
   const m = findMovementByText(text);
   if(m) return m.lowRep;
-  return LOW_REP_MOVEMENTS.some(sub => text.includes(sub));
+  return LOW_REP_MOVEMENTS.some(sub => text.includes(sub)) || LOW_REP_EXACT.has(text);
 }
 
 function getMovementPattern(name){
