@@ -2737,7 +2737,10 @@ function _restrict(mov, restriction, patternKey, level, wi, ti){
     // intacta como estructura original — no se modificó ni se usa acá.
     if(hasRestriction(mov, restriction)){
       const alts = RESTRICTION_DEFAULT[restriction] && RESTRICTION_DEFAULT[restriction][patternKey];
-      if(alts) return Array.isArray(alts) ? _pick(alts, _movIdx(wi||0, ti)) : alts;
+      // Fase 26: mismo fix que _pickSafe (ver ese comentario) — _movIdx crudo
+      // recorría estas alternativas (4 típicas) en el mismo orden fijo semana
+      // tras semana para un atleta con restricción activa.
+      if(alts) return Array.isArray(alts) ? _pick(alts, _crossfitMix32(((wi||0)*2654435761 + (ti||0)*40503 + _crossfit17a2SrcKeyId(patternKey)*97 + 555) >>> 0)) : alts;
       return mov;
     }
   }
@@ -3377,7 +3380,12 @@ const CARDIO_MODES = {
 function _cardioMode(wi, ti, opts){
   const key = (opts.restriction === 'rodilla') ? 'bajo_impacto' : opts.equipment;
   const pool = CARDIO_MODES[key] || CARDIO_MODES.completo;
-  return _pick(pool, _movIdx(wi, ti));
+  // Fase 26 (mismo bug de _pickSafe, ver ese comentario): confirmado con
+  // simulación — la máquina elegida para un día fijo de la semana recorría las
+  // 6 opciones EN ORDEN exacto, ciclo tras ciclo ("Run→Row→Ski Erg→Bike Erg→
+  // Assault Bike→Run→Run→Row→..."), para siempre.
+  const idxMixed = _crossfitMix32((wi*2654435761 + (ti||0)*40503 + 811) >>> 0);
+  return _pick(pool, idxMixed);
 }
 
 // El volumen de la pieza según la duración de la sesión
@@ -5684,8 +5692,11 @@ const CROSSFIT_SATURDAY_DESCANSO_MIN = 4;
 function _crossfitSaturdayLargo(wi, opts){
   // N° de piezas: 3 es lo más frecuente (60%), 2 y 4 se reparten el resto —
   // mismo mecanismo de índice determinístico por semilla que usa todo el motor.
+  // Fase 26 (mismo bug de _pickSafe): _movIdx(wi,500) con ti fijo colapsa a
+  // (wi+1000), un recorrido lineal de las 5 posiciones — 3 salía siempre en las
+  // mismas 3 semanas de cada ciclo de 5, nunca al azar.
   const piezasOpciones = [2,3,3,3,4];
-  const nPiezas = piezasOpciones[_movIdx(wi, 500) % piezasOpciones.length];
+  const nPiezas = piezasOpciones[_crossfitMix32((wi*2654435761 + 500*40503 + 333) >>> 0) % piezasOpciones.length];
   const capPorPieza = CROSSFIT_SATURDAY_CAP_POR_PIEZA[nPiezas];
   const regenSeedWod = opts._regenSeed || 0;
 
