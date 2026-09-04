@@ -2743,8 +2743,22 @@ function _restrict(mov, restriction, patternKey, level, wi, ti){
   }
   return _scaleForBeginner(mov, wi||0, level, patternKey);
 }
+// Fase 26 (mismo bug de fondo que ya corrigió _crossfit17a2Pick para Fuerza/
+// Skills de CrossFit — ver ese comentario para el análisis completo): _movIdx
+// es una combinación LINEAL de (wi,ti). Para un patternKey fijo (mismo día de
+// la semana todas las semanas), eso hace que el pool se recorra en el MISMO
+// orden exacto, ciclo tras ciclo, para siempre — confirmado con simulación de
+// 24 semanas: "Back Squat → Front Squat → Box Squat → Pause Back Squat →
+// Tempo Back Squat → Front Box Squat → Back Squat → ..." sin ninguna
+// variación real, nunca salta el orden ni se salta un movimiento. Afecta a
+// los 4 enfoques que usan este selector compartido (Fuerza/Gimnasia/Cardio/
+// Musculación) — CrossFit no lo usa, tiene su propio motor. _crossfitMix32
+// rompe la resonancia igual que ya se usa en el resto del sistema; se incluye
+// patternKey en la mezcla para que dos patrones distintos con el mismo (wi,ti)
+// no queden correlacionados entre sí.
 function _pickSafe(pool, wi, opts, patternKey, ti){
-  return _restrict(_pick(pool, _movIdx(wi, ti)), opts.restriction, patternKey, opts.level, wi, ti);
+  const idxMixed = _crossfitMix32((wi*2654435761 + (ti||0)*40503 + _crossfit17a2SrcKeyId(patternKey)*97) >>> 0);
+  return _restrict(_pick(pool, idxMixed), opts.restriction, patternKey, opts.level, wi, ti);
 }
 // Elige el movimiento de un patrón de Fuerza aplicando lesión + escalamiento por nivel.
 // Si opts._used existe (memoria de la semana), evita repetir un movimiento que ya
