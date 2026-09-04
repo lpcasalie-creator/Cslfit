@@ -88,7 +88,18 @@
 
   nav.tabbar{
     position:fixed; bottom:0; left:0; right:0; background:var(--bg2);
-    border-top:1px solid var(--border); display:flex; z-index:30;
+    border-top:1px solid var(--border); display:flex; align-items:center; z-index:30;
+    /* Analizando la app como usuaria/o: nav.subnav asume que este bar mide 44px
+       ("bottom:calc(44px + safe-area)", para quedar apoyado justo encima) pero
+       su altura real salía de padding+line-height de los botones (~33px medidos),
+       11px menos — quedaba un hueco transparente entre los dos bars fijos por
+       donde se veía (a medio cortar, sin texto visible) lo que hubiera en esa
+       franja de la página, como el botón "Guardar" de WOD manual/extra al
+       entrar a la vista WOD con historial vacío. min-height fija el número que
+       nav.subnav ya daba por sentado, en vez de intentar adivinar/sincronizar
+       un segundo número que dependa de fuente/padding.
+    */
+    min-height:44px;
     padding-bottom:env(safe-area-inset-bottom);
     padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right);
     overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none;
