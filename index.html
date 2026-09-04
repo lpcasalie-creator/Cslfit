@@ -1138,12 +1138,19 @@ function showView(id){
   document.getElementById(id).classList.add('active');
 
   // Resaltar el botón de GRUPO correcto (siempre) y, si existe, el de submenú.
-  const grupo = UX01_VIEW_GROUP[id] || 'home';
+  // Fase 28 (hallazgo real, analizando la app como usuaria/o): 'settings' no
+  // pertenece a NINGÚN grupo de la tabbar (no está en UX01_VIEW_GROUP), así
+  // que el fallback "|| 'home'" hacía que abrir Ajustes (ícono de tuerca)
+  // dejara el botón "Home" iluminado como activo — confuso, la persona ve la
+  // pantalla de Ajustes pero la barra de abajo dice que sigue en Home. Se
+  // deja sin ningún botón de grupo activo cuando la vista no pertenece a
+  // ninguno, en vez de forzar 'home' por default.
+  const grupo = UX01_VIEW_GROUP[id] || (id === 'settings' ? null : 'home');
   document.querySelectorAll('.tabbar button[data-group]').forEach(b=>b.classList.remove('active'));
-  const grupoBtn = document.querySelector(`.tabbar button[data-group="${grupo}"]`);
+  const grupoBtn = grupo ? document.querySelector(`.tabbar button[data-group="${grupo}"]`) : null;
   if(grupoBtn) grupoBtn.classList.add('active');
   document.querySelectorAll('.subnav').forEach(s=>s.style.display='none');
-  const sub = document.getElementById(`subnav-${grupo}`);
+  const sub = grupo ? document.getElementById(`subnav-${grupo}`) : null;
   if(sub){ sub.style.display='flex'; UX01_ULTIMA_VISTA_POR_GRUPO[grupo] = id; }
   document.body.classList.toggle('has-subnav', !!sub);
 
