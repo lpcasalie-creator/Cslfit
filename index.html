@@ -2898,7 +2898,7 @@ const WOD_COMBOS = {
 };
 function _wodBlock(wi, ti, opts, domain, variant){
   const pool = WOD_COMBOS[domain] || WOD_COMBOS.corto;
-  const c = _pick(pool, wi + ti + (variant||0)*3);
+  const c = _pick(pool, _mixIdx(wi, ti, (variant||0)*3));
   const cap = _scaleCap(_domainBaseCap(domain, wi), opts);
   const fmt = (variant||0) === 0 ? `AMRAP ${cap}'` : `${Math.max(3, Math.round(cap/4))} rondas For Time (cap ${cap}')`;
   return `${fmt}:\n${c.join('\n')}`;
@@ -2954,7 +2954,7 @@ function _fuerzaDay(patternKey, domain='corto'){
     } else {
       for(let k=0; k<n.skill; k++){
         const poolKey = skillKeys[k % skillKeys.length];
-        const l = _pick(SKILL_POOLS[poolKey], wi + (ti||0) + k);
+        const l = _pick(SKILL_POOLS[poolKey], _mixIdx(wi, ti, k));
         skillLines.push(l);
         _sk.push(mkMovement({name:l, pattern:poolKey, raw:l}));
       }
@@ -3174,7 +3174,7 @@ function _musculacionFullBody(wi, isTest, opts, ti){
   if(n >= 6) picks.push(_pickDedup(MUSC_POOLS.posterior.secondary[eq], wi, ti, opts, 'posterior'));
   const rounds = wi<=1 ? 3 : 4;
   const iso = _pickDedup(MUSC_POOLS.posterior.isolation[eq], wi, ti, opts, 'posterior');
-  const core = _pick(SKILL_POOLS.core, wi + (ti||0));
+  const core = _pick(SKILL_POOLS.core, _mixIdx(wi, ti));
   const wodTxt = _wodBlock(wi, ti||0, opts, 'largo', 0);
   const outN = { _pattern:'full_body', _domain:'largo' };
   outN._session = _buildSession(outN, {
@@ -3326,7 +3326,7 @@ function _gimnasiaDay(dayKey, domain){
     const accKeys = GYM_ACC_POOLS[dayKey] || ['core','midline'];
     for(let k=0; k<n.acc; k++){
       const poolKey = accKeys[k % accKeys.length];
-      const line = _pickAcc(SKILL_POOLS[poolKey], wi + (ti||0) + k, opts);
+      const line = _pickAcc(SKILL_POOLS[poolKey], _mixIdx(wi, ti, k), opts);
       strLines.push(line);
       _acc.push(mkMovement({name:line, pattern:poolKey, raw:line}));
     }
@@ -3434,11 +3434,11 @@ function _cardioDay(kind, domain){
   return function(wi, isTest, opts, ti){
     const v = _cardioVol(opts, wi);
     const m = _cardioMode(wi, ti, opts);
-    const drill = _pick(CARDIO_DRILLS, wi + (ti||0));
-    const acc = _pick(CARDIO_ACCESSORY, wi + (ti||0));
+    const drill = _pick(CARDIO_DRILLS, _mixIdx(wi, ti, 1));
+    const acc = _pick(CARDIO_ACCESSORY, _mixIdx(wi, ti, 2));
     const accBlocks = (parseInt(opts.duration) >= 90) ? 2 : 1;
     const accLines = [acc];
-    if(accBlocks > 1) accLines.push(_pick(CARDIO_ACCESSORY, wi + (ti||0) + 3));
+    if(accBlocks > 1) accLines.push(_pick(CARDIO_ACCESSORY, _mixIdx(wi, ti, 5)));
 
     if(isTest){
       const testMode = _cardioMode(0, ti, opts);
@@ -3470,7 +3470,7 @@ function _cardioDay(kind, domain){
     } else if(kind === 'largo'){
       piece = `${m.n} continuo ${v.minutos}' @ 65-75% (Zona 2)\nRespiración nasal si es posible · debe poder hablarse en frases cortas\nObjetivo: construir base aeróbica, NO ir rápido`;
     } else if(kind === 'mixto'){
-      const acc2 = _pick(['12 KB Swings','10 Burpees','15 Air Squats','12 Sit-ups','10 Push-ups','20 Mountain Climbers'], wi + (ti||0));
+      const acc2 = _pick(['12 KB Swings','10 Burpees','15 Air Squats','12 Sit-ups','10 Push-ups','20 Mountain Climbers'], _mixIdx(wi, ti, 3));
       piece = `${v.rondas} rondas:\n${m.n} ${m.corta}\n${acc2}\nDescanso 60s entre rondas`;
     } else { // emom
       const total = Math.max(10, Math.min(v.minutos, 30));
@@ -3528,9 +3528,9 @@ const GENERATORS = {
 
 function _cardioMov(wi, opts){
   if(opts.restriction==='rodilla'){
-    return opts.equipment==='completo' ? _pick(["Bike Erg 300m","Row 300m","Ski Erg 300m"], wi) : "Marcha rápida en el lugar 1' (bajo impacto)";
+    return opts.equipment==='completo' ? _pick(["Bike Erg 300m","Row 300m","Ski Erg 300m"], _mixIdx(wi, 0, 4)) : "Marcha rápida en el lugar 1' (bajo impacto)";
   }
-  return _pick(GEN_POOLS.cardio.interval[opts.equipment], wi);
+  return _pick(GEN_POOLS.cardio.interval[opts.equipment], _mixIdx(wi, 0, 6));
 }
 function _cardioDist(opts){
   if(opts.restriction==='rodilla'){
@@ -3544,7 +3544,7 @@ function _gimnasiaWod(wi, domain, ti, opts){
   const medio = [["10 Ring Rows","12 Air Squats","200m Run"],["8 Push-ups","15 Air Squats"],["10 Burpees","10 Sit-ups","200m Run"],["12 Air Squats","10 Push-ups"]];
   const largo = [["5 Burpees","8 Push-ups","12 Air Squats"],["8 Burpees","10 Push-ups","15 Air Squats","200m Run"],["10 Sit-ups","10 Push-ups","200m Run"]];
   const pool = domain==='corto'?short:domain==='medio'?medio:largo;
-  const c = _pick(pool, wi+ti);
+  const c = _pick(pool, _mixIdx(wi, ti, 7));
   const baseCap = domain==='corto' ? 8+Math.min(wi,3) : domain==='medio' ? 12+Math.min(wi,4) : 18+Math.min(wi,4);
   const cap = _scaleCap(baseCap, opts);
   return `AMRAP ${cap}':\n${c.join('\n')}`;
@@ -4830,6 +4830,15 @@ function _crossfitMix32(x){
   x = (x ^ (x >>> 16)) >>> 0;
   return x;
 }
+// Fase 26: envoltorio corto para el fix repetido de "_pick(pool, wi+ti) camina
+// el pool en orden exacto, ciclo tras ciclo" (ver comentario junto a
+// _pickSafe) — usado en varios selectores compartidos por Fuerza/Gimnasia/
+// Cardio/Musculación y algunos de CrossFit que no tenían mezcla propia.
+// `salt` sólo diferencia el espacio de hash entre sitios de llamada distintos
+// que pudieran coincidir en (wi,ti).
+function _mixIdx(wi, ti, salt){
+  return _crossfitMix32((wi*2654435761 + (ti||0)*40503 + (salt||0)) >>> 0);
+}
 const CROSSFIT_FORMAT_DOMAIN_ID = { corto:1, medio:2, largo:3 };
 function _crossfitFormatHash(domain, wi, ti, offset, regenSeed){
   let seed = (CROSSFIT_FORMAT_DOMAIN_ID[domain]||0) * 7919
@@ -5704,7 +5713,7 @@ function _crossfitSaturdayLargo(wi, opts){
   const usedEnSesion = new Set(); // anti-repetición DENTRO de la misma sesión, todas las piezas
   for(let i=0; i<nPiezas; i++){
     const domain = 'corto'; // caps ya cortos por diseño — dominio corto es el semánticamente correcto
-    const dayPattern = _pick(CROSSFIT_PATTERN_ROTATION, wi + i*7 + 500 + regenSeedWod*13);
+    const dayPattern = _pick(CROSSFIT_PATTERN_ROTATION, _mixIdx(wi, i, 500 + regenSeedWod*13));
     const localOpts = { ...opts, _used: usedEnSesion };
     const wodFormat = _crossfitPickFormat(domain, wi, i, 200, localOpts);
     const nSlots = (CROSSFIT_FORMAT_SLOTS[wodFormat] && CROSSFIT_FORMAT_SLOTS[wodFormat][domain]) || 2;
@@ -5729,7 +5738,7 @@ function _crossfitMonoWod(wi, ti, opts, domain, regenSeed, durMinutos){
   // día (_domainBaseCap + _scaleCap + descuento por movimientos extra de Fuerza/
   // Skills) — respeta la duración de sesión que eligió el coach, igual que el
   // resto de los formatos.
-  const modalidad = _pick(CROSSFIT_MONO_MODALIDADES, wi + (ti||0) + (regenSeed||0)*7);
+  const modalidad = _pick(CROSSFIT_MONO_MODALIDADES, _mixIdx(wi, ti, (regenSeed||0)*7 + 811));
   const esIntervalo = _pick(['steady','interval'], wi*3 + (ti||0) + (regenSeed||0)*11) === 'interval';
   if(esIntervalo){
     const nSeries = domain==='largo' ? 6 : domain==='medio' ? 5 : 4;
@@ -5759,7 +5768,17 @@ function _crossfitMonoWod(wi, ti, opts, domain, regenSeed, durMinutos){
 const CROSSFIT_BASIC_PATTERNS = ['squat','hinge','push','pull'];
 const CROSSFIT_WEEK_MIN_BASICS = { 3:2, 4:3, 5:4 };
 function _crossfitWeekPatterns(wi, daysPerWeek){
-  const base = Array.from({length:daysPerWeek}, (_,ti)=>_pick(CROSSFIT_PATTERN_ROTATION, wi+ti));
+  // Fase 26 (mismo bug de _pickSafe/_cardioMode, ver esos comentarios): "wi+ti"
+  // es un recorrido lineal de CROSSFIT_PATTERN_ROTATION (11 posiciones) — para un
+  // día fijo de la semana, cada semana avanza 1 posición exacta, así que la
+  // asignación de patrón por día (qué día es de squat/hinge/push/pull/olympic/
+  // skill/monostructural) es una ventana deslizante 100% predecible que se
+  // repite completa cada 11 semanas, para toda la vida del programa —
+  // confirmado con simulación (semana 12 repite exactamente el layout de la
+  // semana 1). _crossfitMix32 rompe la resonancia sin cambiar el contrato de la
+  // función (sigue determinística: mismo wi/daysPerWeek → mismo resultado,
+  // necesario para "Continuar desde" y la semana de test).
+  const base = Array.from({length:daysPerWeek}, (_,ti)=>_pick(CROSSFIT_PATTERN_ROTATION, _crossfitMix32((wi*2654435761 + ti*40503 + 271) >>> 0)));
   const minBasics = CROSSFIT_WEEK_MIN_BASICS[daysPerWeek] || Math.min(3, daysPerWeek);
   const presentes = CROSSFIT_BASIC_PATTERNS.filter(b=>base.includes(b));
   if(presentes.length >= minBasics) return base;
@@ -5937,13 +5956,25 @@ function _crossfitDay(offset){
         const outT = { _pattern: dayPattern, _domain: domain };
         // Fix: antes el mismo test aparecía DUPLICADO en Fuerza y en WOD (con
         // dos redacciones distintas del mismo "Test: 1000m Ski Erg") — confuso,
-        // no queda claro si se hace una vez o dos. Un día de motor no tiene
-        // realmente un componente de "Fuerza" separado del test — el test ES
-        // la sesión completa, va sólo en WOD (mismo criterio que ya usan los
-        // días de motor normales, donde el foco real vive en el WOD).
+        // no queda claro si se hace una vez o dos. El test aeróbico va sólo en
+        // WOD, sin duplicarlo en Fuerza.
+        // Fase 26 (hallazgo real, expuesto por la nueva mezcla de _crossfitWeekPatterns):
+        // el comentario anterior decía "un día de motor no tiene componente de
+        // Fuerza separado, mismo criterio que los días de motor normales" — pero
+        // un día de motor NORMAL (no test) sí trae un accesorio de Fuerza fijo
+        // (ver esDiaMono más abajo, "componente agregado" de sentadilla, agregado
+        // en una fase posterior a ese comentario). Dejar strMovements vacío
+        // significaba que, la única semana del programa donde ese día caía en
+        // semana de test, el atleta se quedaba sin NINGÚN estímulo de fuerza ese
+        // día — inconsistente con todas las demás semanas. Mismo accesorio de
+        // sentadilla, en modo "carga moderada" (igual criterio que ya usa el
+        // resto de la semana de test para movimientos secundarios).
+        const poolFuerzaAgregadaTest = GEN_POOLS.fuerza.squat[opts.equipment];
+        const movFuerzaAgregadaTest = _pickSafe(poolFuerzaAgregadaTest, 0, opts, 'squat', ti);
+        const lFAgregadaTest = `${movFuerzaAgregadaTest} 3x${_capReps(movFuerzaAgregadaTest,5)} @ carga moderada (mantener, no buscar máximo)`;
         outT._session = _buildSession(outT, {
           wi, ti, isTest:true, opts, focus:'crossfit', pattern:dayPattern, domain,
-          strMovements:[],
+          strMovements:[ mkMovement({name:movFuerzaAgregadaTest, pattern:'squat', sets:3, reps:_capReps(movFuerzaAgregadaTest,5), notes:'Carga moderada, no buscar máximo', raw:lFAgregadaTest}) ],
           skillMovements: skillMovementsTest,
           wodMovements:[ mkMovement({name:'Test aeróbico de referencia', pattern:'monostructural', raw: lF}) ],
           strType:'strength',
@@ -6095,7 +6126,7 @@ function _crossfitDay(offset){
         olympic: DAY_SKILL_POOLS.olympic_main, skill: ['core','midline','shoulder'],
       };
       const catsAccesorio = catsAccesorioPorPattern[dayPattern] || ['core','midline','unilateral'];
-      const catAccesorio = _pick(catsAccesorio, wi + (ti||0));
+      const catAccesorio = _pick(catsAccesorio, _mixIdx(wi, ti, 900));
       const movAccesorio = _pickDedup(SKILL_POOLS[catAccesorio], wi, ti + 199 + regenSeedDia*19, opts, 'accesorio_'+catAccesorio);
       movsFuerza.push(movAccesorio);
       lineasFuerza.push(movAccesorio);
@@ -6109,7 +6140,7 @@ function _crossfitDay(offset){
       // 120', misma solución: un segundo accesorio.
       if(opts.duration === '120' || domain === 'corto'){
         const catsRestantes = catsAccesorio.filter(c=>c!==catAccesorio);
-        const catAccesorio2 = _pick(catsRestantes.length ? catsRestantes : catsAccesorio, wi + (ti||0) + 401);
+        const catAccesorio2 = _pick(catsRestantes.length ? catsRestantes : catsAccesorio, _mixIdx(wi, ti, 1301));
         const movAccesorio2 = _pickDedup(SKILL_POOLS[catAccesorio2], wi, ti + 599 + regenSeedDia*19, opts, 'accesorio_'+catAccesorio2);
         movsFuerza.push(movAccesorio2);
         lineasFuerza.push(movAccesorio2);
