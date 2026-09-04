@@ -3797,7 +3797,15 @@ const CROSSFIT_TIME_TYPE = new Set(['Handstand Hold', 'L-sit', 'L-sit en anillas
 // Handstand Walk, un movimiento de DISTANCIA — el rep count solo ("14 Broad
 // Jump") no dice nada sin saber cuánto debe avanzar cada salto o el total a
 // cubrir. Caía en REPS (default) por no estar en ninguna de las 3 listas.
-const CROSSFIT_DISTANCE_TYPE = new Set(['Handstand Walk', 'Broad Jump', 'Running', 'Swimming']);
+// Fase 27: 'KB Overhead Carry técnica' es, en esencia, un carry (se camina
+// con la KB en overhead) — pero su ÚNICO contexto real es un accesorio de
+// Fuerza bajo patternKey='olympic_acc' (ver buildMovementCatalog), así que
+// hereda pattern='olympic' en vez de 'carry' y el chequeo `m.pattern==='carry'`
+// de _crossfitPrescriptionType() nunca lo alcanza. Confirmado en producción:
+// "14 KB Overhead Carry técnica" (rep count en un movimiento de distancia).
+// Se agrega acá en vez de tocar `pattern` — mismo criterio que Handstand
+// Walk/Broad Jump, que tampoco son pattern='carry' y ya se resuelven así.
+const CROSSFIT_DISTANCE_TYPE = new Set(['Handstand Walk', 'Broad Jump', 'Running', 'Swimming', 'KB Overhead Carry técnica']);
 const CROSSFIT_MIXED_TYPE = new Set(['Rowing', 'Ski Erg', 'Assault Bike / Airbike']);
 
 function _crossfitPrescriptionType(name){
@@ -3972,7 +3980,12 @@ function _crossfitPrescribe(name, wi, ti, level, domain){
 
   if(type === 'DISTANCE'){
     const m = getMovement(name);
-    const esCarry = m && m.pattern === 'carry';
+    // Fase 27: 'KB Overhead Carry técnica' entra a DISTANCE vía CROSSFIT_DISTANCE_TYPE
+    // (ver ese comentario), no vía pattern==='carry' (el suyo quedó en 'olympic' por
+    // su único contexto real) — sin este OR caería en el rango genérico [100,400]
+    // (el de Running), tan inviable para un carry overhead como los 305m de
+    // Handstand Walk que motivaron el fix de Fase 18.
+    const esCarry = (m && m.pattern === 'carry') || name === 'KB Overhead Carry técnica';
     // Fase 18 (Fix 1): Handstand Walk NO es carry ni cardio real — sin esta rama caía
     // en el rango genérico [100,400] (el de Running), pudiendo prescribir cosas como
     // "305m Handstand Walk", inviable incluso para un atleta avanzado. Rango propio
