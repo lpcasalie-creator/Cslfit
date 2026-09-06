@@ -7400,8 +7400,21 @@ function importProgramFile(){
   if(!file) return;
   const reader = new FileReader();
   reader.onload = async (e) => {
+    let p;
     try{
-      const p = JSON.parse(e.target.result);
+      p = JSON.parse(e.target.result);
+    }catch(err){
+      // Analizando la app como usuaria/o: un archivo corrupto o que no es JSON
+      // (ej. alguien sube el .pdf/.docx equivocado, o el .json se truncó al
+      // compartirlo) mostraba el mensaje crudo de JSON.parse tal cual —
+      // "Expected property name or '}' in JSON at position 2 (line 1 column
+      // 3)" — jerga de parser que no le dice nada a un coach. Mismo patrón que
+      // ya usa el "formato inválido" de más abajo: un mensaje en español que
+      // describe el problema real, no la excepción interna.
+      toast('No se pudo importar el archivo: no es un archivo de programa (.json) válido.', 'error');
+      return;
+    }
+    try{
       if(!p.name || !Array.isArray(p.data)) throw new Error('formato inválido');
       const { error } = await sb.from('programs').insert({
         coach_id: currentUser.id,
