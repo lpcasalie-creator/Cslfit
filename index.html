@@ -8968,6 +8968,18 @@ function onBarCanvasClick(evt){
       const dx = barCalibPoints[1].x-barCalibPoints[0].x;
       const dy = barCalibPoints[1].y-barCalibPoints[0].y;
       const pixelDist = Math.sqrt(dx*dx+dy*dy);
+      // Analizando la app como usuaria/o: si los 2 puntos de calibración caen
+      // casi en el mismo lugar (fácil con un doble-tap accidental en touch),
+      // pixelDist queda ~0 y barCalibRatio = realCm/pixelDist da Infinity —
+      // "!barCalibRatio" en calculateBarMetrics() no lo atrapa (Infinity es
+      // truthy), así que el análisis completo seguía adelante mostrando
+      // "Velocidad pico: Infinity m/s". Se rechaza acá, en el origen, en vez
+      // de calcular con un ratio roto.
+      if(pixelDist < 5){
+        document.getElementById('barCalibStatus').textContent = 'Los 2 puntos están casi en el mismo lugar — marca el segundo punto de calibración de nuevo, más separado.';
+        barCalibPoints = [];
+        return;
+      }
       const realCm = parseFloat(document.getElementById('barCalibCm').value)||45;
       barCalibRatio = realCm / pixelDist;
       document.getElementById('barCalibStatus').textContent = `✓ Calibrado: ${barCalibRatio.toFixed(4)} cm/pixel`;
