@@ -2168,7 +2168,13 @@ const BODY_METRICS = {
 };
 (function initBodyDate(){
   const el = document.getElementById('bodyDate');
-  if(el) el.value = new Date().toISOString().slice(0,10);
+  // Analizando la app como usuaria/o: "new Date().toISOString()" pasa la hora
+  // LOCAL a UTC antes de cortar la fecha — en Chile (UTC-3/-4), cualquier hora
+  // local entre ~21:00 y medianoche ya cae en el día siguiente en UTC, así que
+  // "hoy" quedaba precargado con la fecha de MAÑANA. _todayDateStr() (ya usado
+  // en otro lado del archivo, ver readiness) calcula la fecha con
+  // getFullYear/getMonth/getDate — hora local real, sin ese corrimiento.
+  if(el) el.value = _todayDateStr();
 })();
 async function saveBody(){
   const date = document.getElementById('bodyDate').value;
@@ -2270,7 +2276,9 @@ function renderSkillsSliders(){
 }
 
 async function saveSkills(){
-  const date = new Date().toISOString().slice(0,10);
+  // Mismo hallazgo que initBodyDate(): toISOString() usa UTC, no hora local —
+  // de noche en Chile esto guardaba la evaluación bajo la fecha de MAÑANA.
+  const date = _todayDateStr();
   const entry = { user_id: currentUser.id, entry_date: date };
   SKILLS_LIST.forEach(s=>{ entry[s.key] = parseInt(document.getElementById(`rng_${s.key}`).value); });
   const { data: existing } = await sb.from('skills_entries').select('id')
@@ -7834,7 +7842,9 @@ async function deleteInviteCode(code){
 }
 
 async function markPaidToday(athleteId){
-  const today = new Date().toISOString().slice(0,10);
+  // Mismo hallazgo que initBodyDate(): toISOString() usa UTC, no hora local —
+  // un pago marcado de noche en Chile quedaba registrado bajo la fecha de MAÑANA.
+  const today = _todayDateStr();
   const { error } = await sb.from('profiles').update({ last_payment_date: today }).eq('id', athleteId).eq('coach_id', currentUser.id);
   if(error){ toast('Error al registrar pago: '+error.message, 'error'); return; }
   await renderAthletesList();
@@ -7968,7 +7978,7 @@ async function renderAthletesList(){
         <label>Programa</label>
         <select id="assignProg_${a.id}">${progOptions(asg?asg.program_id:null)}</select>
         <label>Fecha de inicio</label>
-        <input type="date" id="assignDate_${a.id}" value="${asg?asg.start_date:new Date().toISOString().slice(0,10)}">
+        <input type="date" id="assignDate_${a.id}" value="${asg?asg.start_date:_todayDateStr()}">
         <button class="btn small" style="margin-top:8px;" onclick="confirmAssignAthlete('${a.id}')">Confirmar</button>
       </div>
     </div>`;
