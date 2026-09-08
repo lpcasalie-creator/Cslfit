@@ -1755,7 +1755,11 @@ function populateRMChartMovements(){
   const names = [...new Set(_rmHistCache.map(h=>h.movement))];
   const sel = document.getElementById('rmChartMovement');
   const prev = sel.value;
-  sel.innerHTML = names.map(n=>`<option value="${n}">${n}</option>`).join('') || '<option value="">Sin registros</option>';
+  // "movement" es texto libre — una comilla sin escapar en value="..." corta
+  // el atributo ahí mismo y deja el resto como marcado suelto (fila de la
+  // auditoría de escaping de esta sesión, mismo hallazgo que renderPrList/
+  // renderPrDetail/renderRMHistory).
+  sel.innerHTML = names.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('') || '<option value="">Sin registros</option>';
   if(names.includes(prev)) sel.value = prev;
   drawRMChart();
 }
@@ -1779,7 +1783,8 @@ function populateScoreChartMovements(){
   const names = [...new Set(_scoresCache.map(s=>s.name))];
   const sel = document.getElementById('scoreChartMovement');
   const prev = sel.value;
-  sel.innerHTML = names.map(n=>`<option value="${n}">${n}</option>`).join('') || '<option value="">Sin registros</option>';
+  // Mismo hallazgo que populateRMChartMovements(): "name" es texto libre.
+  sel.innerHTML = names.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('') || '<option value="">Sin registros</option>';
   if(names.includes(prev)) sel.value = prev;
   drawScoreChart();
 }
@@ -1894,8 +1899,11 @@ function renderPrList(){
   }
   el.innerHTML = keys.map(k=>{
     const active = (k === _prCurrent);
+    // "k" es el nombre de movimiento escrito a mano por la persona (texto
+    // libre, ver rmMovement) — se escapa igual que en el resto del archivo
+    // (renderProgressHero, bar analysis, toggleAthleteProgress).
     return `<button class="btn ${active?'':'secondary'} small" style="margin:0 6px 6px 0;"
-      onclick="openPr(${JSON.stringify(k).replace(/"/g,'&quot;')})">${k} · ${fmtWeight(best[k].rm)}</button>`;
+      onclick="openPr(${JSON.stringify(k).replace(/"/g,'&quot;')})">${escapeHtml(k)} · ${fmtWeight(best[k].rm)}</button>`;
   }).join('');
 }
 
@@ -1955,7 +1963,7 @@ function renderPrDetail(){
 
   box.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px;">
-      <h3 style="margin:0;">${_prCurrent}</h3>
+      <h3 style="margin:0;">${escapeHtml(_prCurrent)}</h3>
       <a href="${ytSearchUrl(_prCurrent, source)}" target="_blank" rel="noopener"
          style="color:var(--lime); font-size:11px; text-decoration:none;">▶ Técnica</a>
     </div>
@@ -2047,8 +2055,12 @@ async function renderRMHistory(){
   // que ya asumen ese shape.
   _rmHistCache = (data || []).map(s => ({ id:s.id, movement:s.name, rm:parseFloat(s.result), created_at:s.created_at }));
   renderPrList(); renderPrDetail();
+  // "movement" es texto libre (input con autocompletado, no un <select> — el
+  // usuario puede escribir cualquier cosa). El resto del archivo siempre lo
+  // escapa al insertarlo en innerHTML (ver renderProgressHero, bar analysis,
+  // toggleAthleteProgress) — este era el único punto que lo insertaba crudo.
   document.getElementById('rmHistory').innerHTML = _rmHistCache.length
-    ? _rmHistCache.map(h=>`<div class="score-item"><span>${h.movement} — <b>${fmtWeight(Number(h.rm))}</b> <span class="muted">(${new Date(h.created_at).toLocaleDateString('es-CL')})</span></span><span class="del" onclick="delRM('${h.id}')">Borrar</span></div>`).join('')
+    ? _rmHistCache.map(h=>`<div class="score-item"><span>${escapeHtml(h.movement)} — <b>${fmtWeight(Number(h.rm))}</b> <span class="muted">(${new Date(h.created_at).toLocaleDateString('es-CL')})</span></span><span class="del" onclick="delRM('${h.id}')">Borrar</span></div>`).join('')
     : '<p class="muted">Sin registros aún.</p>';
 }
 async function delRM(id){
@@ -7895,8 +7907,11 @@ async function renderAthletesList(){
   (assigns||[]).forEach(a=>{ map[a.athlete_id] = a; });
   if(!athletes || !athletes.length){ el.innerHTML = '<p class="muted">Sin alumnos todavía — se crean solos cuando alguien se loguea por primera vez.</p>'; return; }
 
+  // p.name es el nombre de programa escrito por el coach (texto libre) — el
+  // mismo dato ya se escapa en populateContinueFromSelect/populateActiveProgSelect
+  // (ver esas funciones), este dropdown de "Asignar" era el que quedaba suelto.
   const progOptions = (selectedId) => _coachProgramsCache.length
-    ? _coachProgramsCache.map(p=>`<option value="${p.id}" ${p.id===selectedId?'selected':''}>${p.name}</option>`).join('')
+    ? _coachProgramsCache.map(p=>`<option value="${p.id}" ${p.id===selectedId?'selected':''}>${escapeHtml(p.name)}</option>`).join('')
     : '<option value="">Crea un programa primero</option>';
 
   // Calcular estado de pago por alumno y ordenar: sin pago > atrasado > por vencer > al día
@@ -7933,7 +7948,7 @@ async function renderAthletesList(){
 
   const rowsHtml = withPayment.map(a=>{
     const asg = map[a.id];
-    const info = asg ? `${asg.programs.name} · desde ${asg.start_date}` : 'Sin programa asignado';
+    const info = asg ? `${escapeHtml(asg.programs.name)} · desde ${asg.start_date}` : 'Sin programa asignado';
     const planLabel = a.plan === 'coached' ? 'Con programación' : 'Solo seguimiento';
     const planColor = a.plan === 'coached' ? 'var(--lime)' : 'var(--gray-dim)';
     const joinedDate = a.created_at ? new Date(a.created_at).toLocaleDateString('es-CL') : '—';
