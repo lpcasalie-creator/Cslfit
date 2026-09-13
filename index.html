@@ -2993,8 +2993,27 @@ const WOD_COMBOS = {
   medio: [["12 KB Swings","10 Walking Lunges","10 Sit-ups"],["10 DB Thrusters","10 Burpees","200m Run"],["200m Run","12 Air Squats","8 Push-ups"],["10 KB Swings","10 Box Step-ups","10 Sit-ups"]],
   largo: [["400m Run","15 KB Swings","10 Push-ups","12 Air Squats"],["300m Run","12 DB Thrusters","10 Burpees","10 Sit-ups"],["400m Run","20 Air Squats","15 Sit-ups","10 Push-ups"]],
 };
+// Fix (auditoría restricción de lesión, simulación hinge/espalda): WOD_COMBOS
+// nunca pasaba por ningún filtro de restricción — "KB Swings" (excluido para
+// espalda, es el mismo hinge balístico bajo carga repetida que ya excluye
+// RESTRICTION_EXCLUDE.espalda) y "Walking Lunges"/"Box Step-ups" (mismo caso
+// que "Walking Lunge"/"Box Step-up", ya excluidos para rodilla) aparecían en
+// el WOD sin importar la restricción del atleta, aunque la Fuerza/Skill del
+// mismo día sí la respetaran. Se filtra el combo completo (no el movimiento
+// suelto, para no romper el formato "N ejercicios por ronda" del WOD).
+const WOD_RESTRICTION_BAN = {
+  rodilla: ['Walking Lunges', 'Box Step-ups'],
+  espalda: ['KB Swings'],
+};
+function _wodComboOk(combo, restriction){
+  const ban = WOD_RESTRICTION_BAN[restriction];
+  if(!ban) return true;
+  return !combo.some(line => ban.some(b => line.includes(b)));
+}
 function _wodBlock(wi, ti, opts, domain, variant){
-  const pool = WOD_COMBOS[domain] || WOD_COMBOS.corto;
+  const poolAll = WOD_COMBOS[domain] || WOD_COMBOS.corto;
+  const poolFiltrado = poolAll.filter(c => _wodComboOk(c, opts.restriction));
+  const pool = poolFiltrado.length ? poolFiltrado : poolAll;
   const c = _pick(pool, _mixIdx(wi, ti, (variant||0)*3));
   const cap = _scaleCap(_domainBaseCap(domain, wi), opts);
   const fmt = (variant||0) === 0 ? `AMRAP ${cap}'` : `${Math.max(3, Math.round(cap/4))} rondas For Time (cap ${cap}')`;
@@ -6737,7 +6756,22 @@ const PACING_TEXT = {
   medio: 'sostenido, gestiona el esfuerzo para durar el WOD completo sin colapsar',
   largo: 'controlado, prioriza la constancia sobre la velocidad — piensa en maratón, no en sprint',
 };
-function _addWarmupCooldown(day, focus, domain){
+// Fix (auditoría restricción de lesión, simulación día de lunge/rodilla y de
+// hinge/espalda): WARMUP_BY_PATTERN es una tabla fija por patrón, ajena a la
+// restricción del atleta — el día de lunge con restricción de rodilla sustituía
+// bien la Fuerza y el Skill (Hip Thrust, Monster Walk con banda) pero el Warm-up
+// seguía diciendo literalmente "2x6 zancada sin carga por pierna", y el día de
+// hinge con restricción de espalda seguía con "2x8 Good Morning barra vacía" —
+// la misma carga que el resto del día ya evita. Sólo se listan los 3 pares
+// patrón+restricción donde el texto fijo choca con un movimiento ya excluido
+// en RESTRICTION_EXCLUDE; el resto de las combinaciones (ej. squat/rodilla con
+// Air Squat, pull_vertical/hombro con Active Hang) ya son seguras tal cual.
+const WARMUP_RESTRICTION_OVERRIDE = {
+  rodilla: { lunge: "5' trote suave · movilidad de cadera y tobillo · 2x10 Glute Bridge sin carga" },
+  espalda: { hinge: "5' cardio suave · movilidad de cadera e isquios · 2x10 Glute Bridge sin carga + 2 aproximaciones" },
+  hombro: { olympic_main: "5' cardio suave · movilidad de tobillo, cadera y hombro (sin barra por encima) · 3 aproximaciones progresivas con barra vacía a la altura de la cadera" },
+};
+function _addWarmupCooldown(day, focus, domain, restriction){
   // FASE 1B: crea bloques estructurados de warmup y cooldown; el texto lo produce
   // el renderer. No se concatena nada a mano sobre el campo wod.
   if(!day._session) return day;
@@ -6757,7 +6791,8 @@ function _addWarmupCooldown(day, focus, domain){
   // igual que antes, mismas tablas compartidas.
   const warmupPorPatron = focus === 'crossfit' ? CROSSFIT_WARMUP_BY_PATTERN : WARMUP_BY_PATTERN;
   const cooldownPorPatron = focus === 'crossfit' ? CROSSFIT_COOLDOWN_BY_PATTERN : COOLDOWN_BY_PATTERN;
-  const warmup   = (p && warmupPorPatron[p])   || WARMUP_TEXT[focus]   || WARMUP_TEXT.general;
+  const warmupOverride = restriction && p && WARMUP_RESTRICTION_OVERRIDE[restriction] && WARMUP_RESTRICTION_OVERRIDE[restriction][p];
+  const warmup   = warmupOverride || (p && warmupPorPatron[p])   || WARMUP_TEXT[focus]   || WARMUP_TEXT.general;
   const cooldown = (p && cooldownPorPatron[p]) || COOLDOWN_TEXT[focus] || COOLDOWN_TEXT.general;
   const energyLine = domain ? `Vía energética: ${ENERGY_PATHWAY[domain]} · Pacing: ${PACING_TEXT[domain]}\n\n` : '';
 
@@ -6966,7 +7001,7 @@ function autoGenerateProgram(){
         : tmpl(wi, isTest, opts, ti);
       if(isDeload) day = _applyDeload(day);
       const domain = TEMPLATE_DOMAIN[focus] ? TEMPLATE_DOMAIN[focus][templateIdxs[ti]] : null;
-      day = _addWarmupCooldown(day, focus, domain);
+      day = _addWarmupCooldown(day, focus, domain, opts.restriction);
       // Fase 18 (Fix 2 y 3): capturar el nSlots y la familia dominante de ESTE día
       // para que el próximo los reciba como memoria. El bloque metcon SIEMPRE
       // envuelve el WOD completo en un único movements[0] (Session Object v3) —
@@ -7125,7 +7160,7 @@ function regenerateCrossfitDay(wi, dayIdx){
   let day = templates[ti](wi, isTest, optsTarget, ti);
   if(isDeload) day = _applyDeload(day);
   const domain = TEMPLATE_DOMAIN[cfg.focus] ? TEMPLATE_DOMAIN[cfg.focus][templateIdxs[ti]] : null;
-  day = _addWarmupCooldown(day, cfg.focus, domain);
+  day = _addWarmupCooldown(day, cfg.focus, domain, optsTarget.restriction);
 
   const w = wi+1;
   const f = document.getElementById(`day_w${w}_d${dayIdx}_fuerza`);
