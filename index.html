@@ -583,6 +583,9 @@
     <div class="card">
       <h2>Composición Corporal</h2>
       <p class="muted">Registra los datos de tu InBody (u otra báscula de bioimpedancia). Deja en blanco lo que no tengas.</p>
+      <input type="file" accept="image/*" capture="environment" id="bodyPhotoInput" style="display:none;" onchange="scanInbodyPhoto(this.files[0])">
+      <button class="btn secondary" style="width:100%;margin-bottom:10px;" onclick="document.getElementById('bodyPhotoInput').click()" id="bodyPhotoBtn">📷 Escanear foto de InBody</button>
+      <p class="muted" id="bodyPhotoStatus" style="display:none;"></p>
       <label>Fecha de la medición</label>
       <input type="date" id="bodyDate">
       <div class="grid2">
@@ -2188,6 +2191,72 @@ const BODY_METRICS = {
   // getFullYear/getMonth/getDate — hora local real, sin ese corrimiento.
   if(el) el.value = _todayDateStr();
 })();
+// Achica la foto antes de mandarla (fotos de celular pueden pesar varios MB;
+// esto basta para que el texto del reporte se siga leyendo bien).
+function _resizeImageToBase64(file, maxSide){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.onload = () => {
+      img.onerror = () => reject(new Error('El archivo no es una imagen válida'));
+      img.onload = () => {
+        let { width, height } = img;
+        if(width > height && width > maxSide){ height = Math.round(height*maxSide/width); width = maxSide; }
+        else if(height > maxSide){ width = Math.round(width*maxSide/height); height = maxSide; }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        resolve(dataUrl.split(',')[1]);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+async function scanInbodyPhoto(file){
+  if(!file) return;
+  const btn = document.getElementById('bodyPhotoBtn');
+  const status = document.getElementById('bodyPhotoStatus');
+  btn.disabled = true;
+  status.style.display = 'block';
+  status.textContent = 'Leyendo la foto…';
+  try{
+    const base64 = await _resizeImageToBase64(file, 1600);
+    const res = await fetch('/.netlify/functions/parse-inbody', {
+      method: 'POST',
+      headers: {'content-type':'application/json'},
+      body: JSON.stringify({ image: base64, mediaType: 'image/jpeg' }),
+    });
+    const json = await res.json().catch(()=>null);
+    if(!res.ok || !json || !json.ok){
+      toast((json && json.error) || 'No se pudo leer la foto, intenta de nuevo', 'error');
+      return;
+    }
+    const idByKey = { weight:'bodyWeight', pgc:'bodyPGC', smm:'bodySMM', fatMass:'bodyFatMass', bmi:'bodyBMI', visceral:'bodyVisceral', water:'bodyWater', bmr:'bodyBMR' };
+    let leidos = 0, faltantes = [];
+    Object.keys(idByKey).forEach(k=>{
+      const v = json.data[k];
+      if(v !== null && v !== undefined){ document.getElementById(idByKey[k]).value = v; leidos++; }
+      else faltantes.push(BODY_METRICS[k].label);
+    });
+    if(leidos === 0){
+      toast('No se pudo leer ningún dato de la foto. Completa los campos a mano.', 'error');
+    } else {
+      // Revisar-antes-de-guardar a propósito: se precargan los campos pero
+      // sigue siendo el atleta quien confirma con "Guardar medición".
+      status.textContent = faltantes.length
+        ? `Se leyeron ${leidos} de 8 datos. Revisa los campos antes de guardar (faltó: ${faltantes.join(', ')}).`
+        : 'Se leyeron los 8 datos. Revisa los campos antes de guardar.';
+    }
+  } catch(e){
+    toast('No se pudo leer la foto: '+e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    document.getElementById('bodyPhotoInput').value = '';
+  }
+}
 async function saveBody(){
   const date = document.getElementById('bodyDate').value;
   if(!date) return;
