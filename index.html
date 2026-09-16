@@ -3911,6 +3911,13 @@ const CROSSFIT_POOL_EXCLUDED = new Set(['Swimming',
   // asignado, así que el motor de WOD lo tomaba como candidato de metcon igual que
   // Toes-to-Bar o GHD Sit-up. Se excluye solo del pool de WOD de CrossFit.
   'KB Turkish Get-up',
+  // Fix (feedback de Luis sobre el mes de prueba de 4 semanas): Zercher Step-up
+  // es carga axial + rodilla en flexión bajo un agarre técnico exigente — el
+  // propio catálogo ya lo trata como avanzado y de alto riesgo (está en
+  // BEGINNER_BAN y excluido para restricción de rodilla Y espalda), pero nunca
+  // se le aplicó la misma regla que a KB Turkish Get-up: trabajo técnico
+  // cargado, no apto para volumen bajo fatiga dentro de un WOD.
+  'Zercher Step-up',
 ]);
 
 function _crossfitPoolByPattern(){
@@ -5797,6 +5804,14 @@ function _crossfit17a2PrescribirSkill(mov, opts, wi){
   if(profundidadNivel === 2) componentes = todos;
   else if(profundidadNivel === 1) componentes = todos.slice(Math.ceil(todos.length/2)); // mitad más cercana al movimiento
   else componentes = [];
+  // Fix (auditoría de repetición, simulación de 20 semanas): estas viñetas de
+  // progresión salen de una tabla fija (CROSSFIT_SKILL_PROGRESION), nunca
+  // pasaban por _used — un movimiento ya prescrito COMPLETO otro día de esta
+  // misma semana (ej. "Wall Walk 3x3" el lunes) podía reaparecer como simple
+  // "paso previo" de otro skill el miércoles. Se filtran las que ya están en
+  // la memoria semanal; el movimiento final (lineaFinal) sigue su propio
+  // control de repetición de siempre, sin tocar.
+  if(opts._used && componentes.length) componentes = componentes.filter(c => !opts._used.has(c));
   if(!componentes.length) return lineaFinal;
   return componentes.map(c=>`• ${c}`).join('\n') + `\n${lineaFinal}`;
 }
