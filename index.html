@@ -6114,8 +6114,22 @@ function _crossfitPickClasico(pool, wi, ti, opts, sal){
   // independientes, para que la puerta y la elección no queden atadas.
   const seedPuerta = _crossfitMix32((wi*104729 + ti*15485867 + regenSeed*49979687 + 777 + sal) >>> 0);
   if(seedPuerta % 4 !== 0) return null; // 1 de cada 4 días de este formato
+  // Fix (feedback de Luis sobre el mes de prueba real, 4 semanas): "La Cima" salió
+  // 2 veces en las mismas 4 semanas — el pool de "WOD de la casa" sólo tiene 2
+  // nombres (Luis no tiene más todavía) y cada sorteo era independiente, sin
+  // memoria entre apariciones. Se evita repetir el MISMO nombre dentro de las
+  // últimas 8 semanas — memoria mutable colgada de opts, mismo mecanismo que ya
+  // usa opts._used, así que sirve igual para Single/Triplet/Chipper sin tocar
+  // cada call-site. Degrada con gracia: si el filtro dejara el pool vacío
+  // (ej. sólo queda 1 nombre disponible y ya se usó hace poco), se ignora antes
+  // que no mostrar ningún clásico.
+  opts._recentClasicos = (opts._recentClasicos || []).filter(e => wi - e.wi < 8);
+  const recientes = new Set(opts._recentClasicos.map(e=>e.name));
+  const sinRepetirReciente = disponibles.filter(c => !recientes.has(c.name));
+  const candidatosFinal = sinRepetirReciente.length ? sinRepetirReciente : disponibles;
   const seedEleccion = _crossfitMix32((wi*15485867 + ti*104729 + regenSeed*32452843 + 333221 + sal) >>> 0);
-  const elegido = disponibles[seedEleccion % disponibles.length];
+  const elegido = candidatosFinal[seedEleccion % candidatosFinal.length];
+  opts._recentClasicos.push({ name: elegido.name, wi });
   // Los originales de Chipper (ver más abajo) traen su propio `desc` — no
   // existen en BENCHMARK_WODS (esa lista alimenta Scores, donde el alumno
   // compara su tiempo contra un benchmark real; mezclar un WOD inventado ahí
