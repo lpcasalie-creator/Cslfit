@@ -6155,6 +6155,12 @@ function _crossfitTripletClasico(wi, ti, opts){ return _crossfitPickClasico(CROS
 const CSL_CHIPPER_ORIGINALES = [
   { name:'El Fondo', desc:'50 Air Squat, 40 KB Swing (Russian) 24/16kg, 30 Sit-up, 20 Push-up, 400m Run', minLevel:'principiante' },
   { name:'La Cima',  desc:'30 Box Jump-Over 61/50cm, 25 Toes-to-Bar, 20 Hang Power Clean 43/30kg, 15 Chest-to-Bar Pull-up, 400m Run', minLevel:'intermedio', equipoMin:'completo' },
+  // Pedido de Luis: pool de "WOD de la casa" muy chico (2 nombres) — se agregan 3
+  // más, mismo estilo (paso único, ~20', reps descendentes, cierre en 400m Run,
+  // nombres de la misma familia "montaña" que El Fondo/La Cima).
+  { name:'La Cuesta', desc:'40 Wall Balls 9/6kg, 30 KB Swing (Russian) 24/16kg, 20 Burpees, 15 DB Thruster 22/15kg, 400m Run', minLevel:'intermedio' },
+  { name:'El Muro',   desc:'30 KB Swing (Russian) 24/16kg, 21 Deadlift 100/70kg, 15 Hang Power Clean 60/40kg, 9 Push Jerk 60/40kg, 400m Run', minLevel:'intermedio', equipoMin:'completo' },
+  { name:'La Grieta', desc:'30 Toes-to-Bar, 24 Wall Balls 9/6kg, 18 Pull-up, 12 HSPU contra muro, 400m Run', minLevel:'intermedio' },
 ];
 function _crossfitChipperOriginal(wi, ti, opts){ return _crossfitPickClasico(CSL_CHIPPER_ORIGINALES, wi, ti, opts, 555555); }
 
