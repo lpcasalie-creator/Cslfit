@@ -76,7 +76,10 @@ def nota_metcon(maquina, distancia=None, aerobico=False):
 
 def notas_de_fuerza(levantamiento, semana_del_mes, mes_del_ciclo, hay_test_en_s4):
     """Las notas con * de un bloque de fuerza normal (no de test)."""
-    if mes_del_ciclo in (2, 3):
+    # El mes 1 entra acá por respuesta suya (22 sept): el Base lleva notas de
+    # potenciación, como los meses 2 y 3, no descanso + foco técnico como el 4.
+    # Hasta ahora caía en el `else` por descarte, que era una suposición mía.
+    if mes_del_ciclo in (1, 2, 3):
         pot = POTENCIACION.get(levantamiento)
         return [pot] if pot else []
 

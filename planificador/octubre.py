@@ -8,7 +8,8 @@ Todo lo de porcentajes y series acá es extrapolado, y va marcado.
 import sys
 from datetime import date, timedelta
 from semana import generar_mes, PUNTO, LEYENDA
-from bloque import FASES, PCT_POR_MES, TEST_DEL_MES, ROTULO_S4, MESES_SIN_DATO
+from bloque import (FASES, PCT_POR_MES, TEST_DEL_MES, ROTULO_S4,
+                    MESES_SIN_DATO, AVISO_SIN_DATO)
 
 MES = 1
 PRIMER_LUNES = date(2026, 9, 29)
@@ -38,8 +39,8 @@ def imprimir(semanas):
     if MES in MESES_SIN_DATO:
         print()
         print('  ⚠ MES SIN PLANILLA DE REFERENCIA')
-        print('    Los porcentajes y la escalera de series son EXTRAPOLADOS.')
-        print('    La banda sale de tu regla 12; la escalera, de la forma del mes 2.')
+        for linea in AVISO_SIN_DATO.split('\n'):
+            print('    ' + linea.strip())
     print('=' * ANCHO)
 
     for n, sem in enumerate(semanas, 1):

@@ -50,7 +50,18 @@ PCT_POR_MES = {
 # diferencia entre "esto lo mediste tú" y "esto lo supuse yo" es justamente
 # lo que hace confiable al resto.
 PCT_POR_MES[1] = {1: '@65-70%', 2: '@68-73%', 3: '@70-75%', 4: '@70-75%'}
+
+# Sigue sin haber planilla del mes 1, pero ya no todo es suposición. El 22 de
+# septiembre él confirmó tres de las cuatro cosas que faltaban: la banda
+# (@65-75%), que lleva notas de potenciación como los meses 2-3, y que la
+# semana 4 busca un 2-3RM de olímpico. Lo único que queda extrapolado es el
+# reparto semana a semana dentro de la banda, que es un detalle menor al lado
+# de lo que había antes. El aviso se queda, pero diciendo eso y no más: un
+# aviso que exagera se termina ignorando, y entonces no avisa nada.
 MESES_SIN_DATO = {1}
+AVISO_SIN_DATO = ('La banda, las notas y el test de la S4 los confirmó él. '
+                  'Lo único extrapolado\n  es cómo se reparte la banda entre '
+                  'las semanas 1 a 3.')
 
 # Compatibilidad: el promedio de los meses medidos, para quien no pase el mes.
 PCT_POR_SEMANA = PCT_POR_MES[3]
@@ -67,10 +78,16 @@ PCT_POR_SEMANA = PCT_POR_MES[3]
 #
 # Que el test esté al final del ciclo y no al final de cada mes es coherente
 # con las fases: no se testea un 1RM en el mes "Base".
-TEST_DEL_MES = {1: 'ninguno', 2: 'parcial', 3: 'ninguno', 4: 'completo'}
+#
+# El mes 1 lo respondió él (22 sept), y corrigiendo lo que yo había ofrecido:
+# no es un 1RM. "Una vez al mes, sobre todo semana 4, sacar 2-3RM, sobre todo
+# de movimientos de levantamiento olímpico". Lo cual es coherente con el
+# párrafo de arriba en vez de contradecirlo: no se maxea un single de snatch,
+# pero un 2-3RM de olímpico sí se busca, y es lo típico de un mes Base.
+TEST_DEL_MES = {1: 'olimpico', 2: 'parcial', 3: 'ninguno', 4: 'completo'}
 # Y el rótulo de la semana 4 tiene que decir lo que realmente pasa.
 ROTULO_S4 = {'completo': 'TEST 1RM', 'parcial': 'TEST 1RM parcial',
-             'ninguno': 'Pesado del día'}
+             'olimpico': 'Buscar 2-3RM', 'ninguno': 'Pesado del día'}
 
 LEVANTAMIENTOS = ['Back Squat', 'Deadlift', 'Front Squat', 'Power Clean',
                   'Squat Snatch', 'Push Press', 'Power Snatch', 'Bench Press']
@@ -79,6 +96,12 @@ LEVANTAMIENTOS = ['Back Squat', 'Deadlift', 'Front Squat', 'Power Clean',
 # testea un snatch — fallar un snatch al 95% es un problema de técnica, no de
 # fuerza, y el número no dice nada.
 LEVANTAMIENTOS_DE_TEST = ['Back Squat', 'Deadlift', 'Power Clean']
+# El 2-3RM del mes Base va en olímpicos, que es lo que él pidió. La lista es
+# distinta de la de 1RM a propósito: un 2-3RM sí se puede buscar en un clean o
+# un snatch, porque a 85-88% la técnica todavía aguanta. Es justamente el
+# rango donde el número dice algo.
+LEVANTAMIENTOS_OLIMPICOS = ['Power Clean', 'Squat Clean', 'Clean and Jerk',
+                            'Power Snatch', 'Squat Snatch', 'Split Jerk']
 COMPLEJOS = ['Power Clean + Split Jerk', 'Snatch Balance + OHS',
              'Clean Pull + Squat Clean', 'Push Press + Push Jerk']
 
@@ -148,8 +171,19 @@ def escribir_bloque(rnd, categoria, minutos, semana_del_mes, mes_del_ciclo,
     hay_test_en_s4 = test != 'ninguno'
 
     if categoria == 'STRENGTH':
-        cupo_de_test = {'completo': 2, 'parcial': 1, 'ninguno': 0}[test]
+        # "Una vez al mes": el 2-3RM del Base es UN día, no una semana de test.
+        cupo_de_test = {'completo': 2, 'parcial': 1, 'olimpico': 1,
+                        'ninguno': 0}[test]
         if semana_del_mes == 4 and dias_de_test < cupo_de_test:
+            if test == 'olimpico':
+                lev = rnd.choice([l for l in LEVANTAMIENTOS_OLIMPICOS
+                                  if l not in usados] or LEVANTAMIENTOS_OLIMPICOS)
+                # La rampa termina en 2-3 reps, no en un single: sube más
+                # suave y se corta antes. Llevarla a 95% sería el otro test.
+                return (f'{lev.upper()} — Buscar 2-3RM:\n'
+                        '60%x3 → 70%x3 → 78%x3\n'
+                        '→ 83%x2 → 87%x2 → 2-3RM\n'
+                        + '\n'.join(notas_de_test(lev)))
             lev = rnd.choice([l for l in LEVANTAMIENTOS_DE_TEST if l not in usados]
                              or LEVANTAMIENTOS_DE_TEST)
             return (f'{lev.upper()} — Buscar 1RM:\n'

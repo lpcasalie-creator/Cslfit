@@ -6,7 +6,7 @@ import random
 import generar2 as g
 from prescribir import escribir
 from bloque import (escribir_bloque, FASES, PCT_POR_MES,
-                    TEST_DEL_MES, ROTULO_S4, MESES_SIN_DATO)
+                    TEST_DEL_MES, ROTULO_S4, MESES_SIN_DATO, AVISO_SIN_DATO)
 from sabado import armar_sabado
 from leer_wod import leer
 
@@ -81,7 +81,10 @@ def generar_semana(mes_del_ciclo, semana_del_mes, semilla=None,
         txt_bloque = escribir_bloque(rnd, d['cat'], skill_min, semana_del_mes,
                                      mes_del_ciclo, usados, cap_del_wod=cap,
                                      dias_de_test=dias_de_test)
-        if 'Buscar 1RM' in txt_bloque:
+        # 'Buscar' a secas: el mes 1 escribe "Buscar 2-3RM" y buscando solo
+        # "Buscar 1RM" el contador nunca subía, así que el cupo de un día por
+        # mes no se respetaba y podían salir dos.
+        if 'Buscar 1RM' in txt_bloque or 'Buscar 2-3RM' in txt_bloque:
             dias_de_test += 1
         if d['cat'] == 'STRENGTH':
             usados.append(txt_bloque.split('\n')[0].split(' ')[0])
@@ -190,8 +193,7 @@ def encabezado(mes, semana_del_mes):
     escalera = PCT_POR_MES.get(mes, PCT_POR_MES[3])
     pct = (ROTULO_S4[test] if semana_del_mes == 4 and test != 'ninguno'
            else escalera[semana_del_mes])
-    aviso = ('\n⚠ Mes sin planilla de referencia: los porcentajes y la escalera '
-             'de series\n  son extrapolados, no medidos.' if mes in MESES_SIN_DATO else '')
+    aviso = ('\n⚠ ' + AVISO_SIN_DATO) if mes in MESES_SIN_DATO else ''
     return (f'CROSSTRAIN EIM — Mes {mes} · {fase} {rango}\n'
             f'Semana {semana_del_mes} de 4 · {pct}{aviso}\n'
             + '=' * ANCHO)

@@ -48,6 +48,23 @@ for s, f, fa, jornadas, sab in MES:
         mv = leer(linea)['movimientos']
         if mv: PESOS.setdefault(mv[0], []).append((int(pm.group(1)), int(pm.group(2)), pm.group(3).lower()))
 
+# Cinco movimientos que él programa pero nunca escribió con carga en los tres
+# meses transcritos, así que salían sin peso. Deducidos de sus propias anclas y
+# aprobados por él el 22 de septiembre:
+#
+#   Back Squat      155/105   un escalón sobre su Front Squat (135/95)
+#   Clean and Jerk  135/95    lo limita el jerk: Push Jerk 115/75, Squat Clean 135/95
+#   Overhead Squat   95/65    lo limita la posición de snatch: sus dos snatch van 95/65
+#   Split Jerk      135/95    su Push Jerk sale 115/75 dos veces y 135/95 una
+#   Thruster         95/65    lo limita la sentadilla: bajo su Push Press (115/75)
+#
+# Van con `setdefault`: si mañana transcribe un mes donde sí escribió la carga,
+# el dato medido gana y esto no lo pisa.
+for _m, _p in (('Back Squat', (155, 105, 'lb')), ('Clean and Jerk', (135, 95, 'lb')),
+               ('Overhead Squat', (95, 65, 'lb')), ('Split Jerk', (135, 95, 'lb')),
+               ('Thruster', (95, 65, 'lb'))):
+    PESOS.setdefault(_m, [_p])
+
 # Respaldo: movimientos cuyo único dato histórico viene de un esquema
 # (21-15-9). Se guarda la serie más chica del esquema, que es lo que él
 # usaría como reps por ronda.

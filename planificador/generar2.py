@@ -402,6 +402,19 @@ def proponer(intentos=6000, semilla=None, previas=None, composicion=None):
         cats = ['STRENGTH','STRENGTH','GYMNASTICS','METCON','ACCESSORY']
         rnd.shuffle(cats)
         plan = dict(zip(DIAS, cats))
+        # Los dos días de fuerza no van pegados. Él lo pidió con estas
+        # palabras — "se puede pero ideal que no pase tan seguido dos días que
+        # tengan mucho peso"— y su planilla lo respalda donde la estructura es
+        # comparable: en el mes 3 y septiembre, que llevan DOS días de fuerza
+        # como esto, los huecos son 2-3-3-1-2-2-3-2. Uno pegado de ocho, y ese
+        # uno es una semana 4.
+        #
+        # El mes 2 tiene 4 de 7 pegados, pero ahí lleva tres y cuatro días de
+        # fuerza por semana —HALTEROFILIA y FUERZA eran categorías separadas—
+        # y con cuatro días en cinco no existe forma de separarlos. No es un
+        # contraejemplo, es otra estructura.
+        fuerza = [i for i, c in enumerate(cats) if c == 'STRENGTH']
+        if fuerza[1] - fuerza[0] < 2: continue
         if any(plan[d] == c and d in dias_bloqueados(c, previas)
                for c in ('GYMNASTICS','METCON','ACCESSORY') for d in DIAS): continue
 
