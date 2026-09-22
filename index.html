@@ -492,9 +492,10 @@
       <div class="timer-status" id="timerStatus"></div>
       <div class="timer-display" id="timerDisplay">00:00</div>
       <div class="timer-controls grid2">
-        <button class="btn" onclick="startTimer()">Start</button>
-        <button class="btn secondary" onclick="resetTimer()">Reset</button>
+        <button class="btn" id="timerStartBtn" onclick="startTimer()">Start</button>
+        <button class="btn secondary" onclick="pauseTimer()">Pausar</button>
       </div>
+      <button class="btn secondary" onclick="resetTimer()">Reset</button>
     </div>
   </section>
 
@@ -1534,6 +1535,13 @@ async function loadWod(){
 
 /* ---------------- TIMER ---------------- */
 let timerInterval=null, timerSeconds=0, timerRunning=false;
+// Fix (auditoría UX: "no hay forma de pausar sin perder el tiempo"): antes el
+// único botón para detener el timer era Reset, que borra todo (timerSeconds=0,
+// timerEmom=null) — si alguien te interrumpe a mitad de un WOD cronometrado, no
+// había forma de parar el reloj y seguir después desde donde quedó. timerPaused
+// guarda ese estado intermedio: el intervalo se detiene pero timerSeconds/
+// timerEmom quedan intactos, listos para retomar exactamente donde iban.
+let timerPaused = false;
 // Pedido de Luis: EMOM como intervalo real (sets + trabajo + descanso), no solo
 // una cuenta regresiva de minutos totales sin ninguna señal en el camino.
 // null cuando el modo no es EMOM — los otros 2 modos no usan este estado.
@@ -1611,10 +1619,27 @@ const TIMER_PREP_SECONDS = 10;
 function startTimer(){
   if(timerRunning) return;
   try{ _timerGetAudioCtx(); }catch(e){ /* audio no disponible — el timer sigue funcionando igual */ }
+  // Reanudar desde pausa: sin volver a correr "PREPÁRATE" — timerSeconds/
+  // timerEmom quedaron intactos en pauseTimer(), se retoma el mismo intervalo.
+  if(timerPaused){
+    timerPaused = false;
+    timerRunning = true;
+    if(document.getElementById('timerMode').value === 'emom'){
+      _timerUpdateEmomStatus();
+      timerInterval = setInterval(_timerEmomTick, 1000);
+    } else {
+      document.getElementById('timerStatus').textContent = '';
+      document.getElementById('timerStatus').className = 'timer-status';
+      timerInterval = setInterval(_timerCountTick, 1000);
+    }
+    _timerRenderButtons();
+    return;
+  }
   const display = document.getElementById('timerDisplay');
   const statusEl = document.getElementById('timerStatus');
   display.classList.remove('timer-finished');
   timerRunning = true;
+  _timerRenderButtons();
 
   timerSeconds = TIMER_PREP_SECONDS;
   display.textContent = fmt(timerSeconds);
@@ -1632,6 +1657,50 @@ function startTimer(){
     _timerStartMode();
   },1000);
 }
+// Ticks extraídos como funciones nombradas (antes vivían inline dentro de
+// setInterval en _timerStartMode) para que pauseTimer()/startTimer() puedan
+// reanudar el mismo intervalo sin duplicar la lógica de cada modo.
+function _timerEmomTick(){
+  const display = document.getElementById('timerDisplay');
+  timerSeconds--;
+  if(timerSeconds<=0){
+    // Fin de la fase actual: pasar a descanso (si hay), o al siguiente set,
+    // o terminar si ya se cumplieron todos los sets.
+    if(timerEmom.phase==='trabajo' && timerEmom.restSec>0){
+      timerEmom.phase = 'descanso';
+      timerSeconds = timerEmom.restSec;
+      _timerUpdateEmomStatus();
+      timerBeep();
+    } else if(timerEmom.round < timerEmom.totalRounds){
+      timerEmom.round++;
+      timerEmom.phase = 'trabajo';
+      timerSeconds = timerEmom.workSec;
+      _timerUpdateEmomStatus();
+      timerBeep();
+    } else {
+      clearInterval(timerInterval); timerRunning=false; timerPaused=false; timerEmom=null;
+      display.classList.add('timer-finished');
+      document.getElementById('timerStatus').textContent = 'Completo';
+      timerAlert();
+      _timerRenderButtons();
+      return;
+    }
+  }
+  display.textContent = fmt(timerSeconds);
+}
+function _timerCountTick(){
+  const display = document.getElementById('timerDisplay');
+  const mode = document.getElementById('timerMode').value;
+  const countingDown = mode!=='fortime';
+  timerSeconds += countingDown ? -1 : 1;
+  display.textContent = fmt(timerSeconds);
+  if(countingDown && timerSeconds<=0){
+    clearInterval(timerInterval); timerRunning=false; timerPaused=false;
+    display.classList.add('timer-finished');
+    timerAlert();
+    _timerRenderButtons();
+  }
+}
 function _timerStartMode(){
   const mode = document.getElementById('timerMode').value;
   const display = document.getElementById('timerDisplay');
@@ -1648,32 +1717,7 @@ function _timerStartMode(){
     display.textContent = fmt(timerSeconds);
     _timerUpdateEmomStatus();
     timerBeep();
-    timerInterval = setInterval(()=>{
-      timerSeconds--;
-      if(timerSeconds<=0){
-        // Fin de la fase actual: pasar a descanso (si hay), o al siguiente set,
-        // o terminar si ya se cumplieron todos los sets.
-        if(timerEmom.phase==='trabajo' && timerEmom.restSec>0){
-          timerEmom.phase = 'descanso';
-          timerSeconds = timerEmom.restSec;
-          _timerUpdateEmomStatus();
-          timerBeep();
-        } else if(timerEmom.round < timerEmom.totalRounds){
-          timerEmom.round++;
-          timerEmom.phase = 'trabajo';
-          timerSeconds = timerEmom.workSec;
-          _timerUpdateEmomStatus();
-          timerBeep();
-        } else {
-          clearInterval(timerInterval); timerRunning=false; timerEmom=null;
-          display.classList.add('timer-finished');
-          document.getElementById('timerStatus').textContent = 'Completo';
-          timerAlert();
-          return;
-        }
-      }
-      display.textContent = fmt(timerSeconds);
-    },1000);
+    timerInterval = setInterval(_timerEmomTick, 1000);
     return;
   }
 
@@ -1681,23 +1725,33 @@ function _timerStartMode(){
   statusEl.textContent = ''; statusEl.className = 'timer-status';
   const mins = parseFloat(document.getElementById('timerMinutes').value)||0;
   timerSeconds = mode==='amrap' ? mins*60 : 0;
-  const countingDown = mode!=='fortime';
-  timerInterval = setInterval(()=>{
-    timerSeconds += countingDown ? -1 : 1;
-    display.textContent = fmt(timerSeconds);
-    if(countingDown && timerSeconds<=0){
-      clearInterval(timerInterval); timerRunning=false;
-      display.classList.add('timer-finished');
-      timerAlert();
-    }
-  },1000);
+  timerInterval = setInterval(_timerCountTick, 1000);
+}
+// Fix (ver comentario junto a `let timerPaused`): detiene el intervalo SIN
+// tocar timerSeconds/timerEmom, para que "Reanudar" siga exactamente donde
+// quedó — a diferencia de Reset, que sí los borra.
+function pauseTimer(){
+  if(!timerRunning) return;
+  clearInterval(timerInterval);
+  timerRunning = false;
+  timerPaused = true;
+  const statusEl = document.getElementById('timerStatus');
+  statusEl.textContent = 'PAUSADO';
+  statusEl.className = 'timer-status fase-prep';
+  _timerRenderButtons();
+}
+function _timerRenderButtons(){
+  const btn = document.getElementById('timerStartBtn');
+  if(!btn) return;
+  btn.textContent = timerPaused ? 'Reanudar' : 'Start';
 }
 function resetTimer(){
-  clearInterval(timerInterval); timerRunning=false; timerSeconds=0; timerEmom=null;
+  clearInterval(timerInterval); timerRunning=false; timerPaused=false; timerSeconds=0; timerEmom=null;
   const el = document.getElementById('timerDisplay');
   el.textContent='00:00'; el.classList.remove('timer-finished');
   const statusEl = document.getElementById('timerStatus');
   statusEl.textContent=''; statusEl.className='timer-status';
+  _timerRenderButtons();
 }
 renderTimerInputs();
 
