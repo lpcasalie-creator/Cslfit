@@ -69,14 +69,29 @@ for k, v in ALIAS.items():
 INDICE = [(re.compile(r'\b' + re.escape(k) + r'\b'), v)
           for k, v in sorted(_canonico.items(), key=lambda x: -len(x[0]))]
 
+# El orden manda: gana el primero que calza. Los formatos nuevos van ARRIBA de
+# 'for time' porque lo llevan adentro del encabezado — "INTERVALOS — 3 sets for
+# time" se leía como FOR TIME a secas, y "ESCALERA DE CARGA" como ESCALERA.
 FORMATOS = [
+ (r'\bescalera de carga\b', 'ESCALERA-CARGA'),
+ (r'\bintervalos\b', 'INTERVALOS'),
+ (r'\bamrap\b.*\binterrumpido\b', 'AMRAP-INTERRUMPIDO'),
+ (r'\bamrap\b.*\bescalera\b', 'AMRAP-ESCALERA'),
+ (r'\bescalera\b', 'ESCALERA'),
  (r'\bfor time\b', 'FOR TIME'), (r'\bamrap\b', 'AMRAP'), (r'\bemom\b', 'EMOM'),
- (r'\bchipper\b', 'CHIPPER'), (r'\bescalera\b', 'ESCALERA'), (r'\btabata\b', 'TABATA'),
+ (r'\bchipper\b', 'CHIPPER'), (r'\btabata\b', 'TABATA'),
  (r'\b\d+\s*rounds?\b', 'ROUNDS'),
 ]
 
 # Palabras que nunca son un movimiento aunque calcen con algo del catálogo.
-RUIDO = {'rest', 'descanso', 'esc', 'rx', 'cap', 'rounds', 'round'}
+#
+# 'intervalos' está en el catálogo como entrada sin categoría, así que el
+# encabezado "INTERVALOS — 3 sets for time" metía un movimiento fantasma
+# llamado Intervalos en cada día de ese formato. Dos días seguidos de
+# intervalos y el validador marcaba "movimiento en días seguidos" por algo que
+# no existe: 30 fantasmas en 15 meses, y siete hallazgos falsos.
+RUIDO = {'rest', 'descanso', 'esc', 'rx', 'cap', 'rounds', 'round',
+         'intervalos', 'escalera'}
 
 def leer(texto):
     t = norm(texto)

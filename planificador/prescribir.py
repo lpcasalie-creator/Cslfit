@@ -7,6 +7,7 @@ una variación que Luis nunca programó.
 """
 import random, re
 from ritmos import estimar, MARGEN_CAP
+import formatos as fm
 from escalas import escala_de
 from collections import defaultdict
 from reps import leer_reps
@@ -102,14 +103,37 @@ TECHO.update({'Run': 2000, 'Row': 3000, 'Bike': 3000, 'Ski': 3000,
 TECHO_POR_VEZ = {'Run': 1000, 'Row': 1000, 'Bike': 1000, 'Ski': 1000,
                  'Farmer Carry': 200, 'Shuttle Run': 400}
 
+# Los cinco clásicos se quedan con el grueso: su propio reparto es FOR TIME
+# 27% · AMRAP 23% · ROUNDS 22% · EMOM 13% · CHIPPER 7%, y los formatos nuevos
+# entran como variedad, no como reemplazo. Cualquiera de los nuevos que no le
+# sirva al día devuelve None y se cae al clásico, así que estos números son el
+# techo de cuánto aparecen, no lo que aparecen.
 FORMATO_POR_DOMINIO = {
- 'fosfágeno':   [('FOR TIME', .55), ('ROUNDS', .30), ('AMRAP', .15)],
- 'glucolítico': [('AMRAP', .40), ('EMOM', .30), ('ROUNDS', .30)],
- 'aeróbico':    [('ROUNDS', .50), ('CHIPPER', .50)],
+ 'fosfágeno':   [('FOR TIME', .38), ('ROUNDS', .20), ('AMRAP', .10),
+                 ('ESCALERA', .15), ('ESCALERA-CARGA', .20), ('INTERVALOS', .05)],
+ 'glucolítico': [('AMRAP', .25), ('EMOM', .20), ('ROUNDS', .18),
+                 ('ESCALERA', .12), ('INTERVALOS', .10),
+                 ('AMRAP-INTERRUMPIDO', .08), ('ESCALERA-CARGA', .12)],
+ 'aeróbico':    [('ROUNDS', .38), ('CHIPPER', .27), ('INTERVALOS', .15),
+                 ('AMRAP-INTERRUMPIDO', .12), ('ESCALERA', .08)],
 }
+NUEVOS = {'ESCALERA', 'ESCALERA-CARGA', 'INTERVALOS',
+          'AMRAP-INTERRUMPIDO', 'AMRAP-ESCALERA'}
+# Con qué se interrumpe un AMRAP. Corto, sin equipo y sin técnica: la
+# interrupción es un costo de tiempo, no un segundo WOD adentro del primero.
+CORTES = [('Burpee', 8), ('Box Jump', 12), ('Air Squat', 15),
+          ('Sit-up', 15), ('Push-up', 10)]
 
 def _elegir(rnd, pares):
-    x, acum = rnd.random(), 0
+    """Sorteo ponderado. Renormaliza, así que la lista no tiene que sumar 1.
+
+    Antes devolvía None cuando la suma quedaba corta. Mientras las tablas
+    estaban escritas a mano y sumaban exactamente uno no se notaba; filtrar
+    la lista —por ejemplo para sacar los formatos nuevos— la deja sumando
+    menos y el None se propagaba hasta el texto del WOD.
+    """
+    total = sum(p for _, p in pares) or 1
+    x, acum = rnd.random() * total, 0
     for v, p in pares:
         acum += p
         if x <= acum: return v
@@ -259,8 +283,16 @@ def rondas_para(dominio, movs, reps_por_mov):
     cap = (estimar(trabajo_del_wod(movs, reps_por_mov, mejor)) + MARGEN_CAP) / 60
     return mejor, max(PISO_CAP, round(cap))
 
-def escribir(rnd, dia):
-    """Devuelve el texto del WOD. El cap NO se elige: se calcula del trabajo."""
+def escribir(rnd, dia, evitar=()):
+    """Devuelve (texto, formato, cap, movimientos). El cap NO se elige: se
+    calcula del trabajo.
+
+    `evitar` son los movimientos que el resto de la semana ya usa. Solo lo
+    mira el AMRAP interrumpido, que es el único formato que puede AGREGAR un
+    movimiento al día. Sin esto, el corte se elegía a ciegas y chocaba con el
+    día anterior o el siguiente — el plan de la semana ya está cerrado cuando
+    esto corre, así que acá es el único lugar donde se puede evitar.
+    """
     movs, dom = dia['movs'], dia['dom']
 
     # 1. Reps de cada movimiento, de sus rangos históricos
@@ -276,6 +308,15 @@ def escribir(rnd, dia):
     fmt = _elegir(rnd, FORMATO_POR_DOMINIO[dom])
     if fmt == 'EMOM' and not all(cabe_en_un_minuto(m) for m in movs):
         fmt = 'AMRAP'
+    # Los formatos nuevos se resuelven al final, cuando `linea` ya existe. Acá
+    # solo se aparta el nombre y se sigue con un clásico de respaldo, para que
+    # si el nuevo no le sirve al día el WOD igual salga escrito.
+    fmt_nuevo = fmt if fmt in NUEVOS else None
+    if fmt_nuevo:
+        fmt = _elegir(rnd, [(f, p) for f, p in FORMATO_POR_DOMINIO[dom]
+                            if f not in NUEVOS] or [('ROUNDS', 1.0)])
+        if fmt == 'EMOM' and not all(cabe_en_un_minuto(m) for m in movs):
+            fmt = 'AMRAP'
     if fmt == 'CHIPPER':
         # Un chipper es de una sola ronda: el volumen va en las reps. Hay que
         # buscar el factor que deja el WOD DENTRO de su dominio — antes
@@ -303,16 +344,22 @@ def escribir(rnd, dia):
             # Entonces el formato correcto es por rondas, no chipper.
             fmt = 'ROUNDS'
 
-    def linea(m, emom=False):
+    def linea(m, emom=False, override=None, sin_reps=False):
+        # `override` deja que un formato escriba otro número de repeticiones
+        # sin tocar el diccionario del día. `sin_reps` escribe el movimiento
+        # pelado: en una escalera el número ya está en el encabezado
+        # ("21-15-9"), y repetirlo abajo como 45 se lee como si fueran 45 por
+        # ronda. Es el error que tenía la primera versión.
+        n = override if override is not None else reps[m]
         if m in DIST:
-            d = reps[m]
+            d = n
             if emom and d > 200: d = 200
             return f'· {d}m {m}'
         peso = peso_de(m)
-        base = f'· {reps[m]} {m}' + (f' ({peso})' if peso else '')
+        base = ('· ' + m if sin_reps else f'· {n} {m}') + (f' ({peso})' if peso else '')
         # La línea (Esc) va solo en los movimientos de alta destreza, que es
         # donde él la pone: regla 6, pocas reps Rx más la escala con más reps.
-        esc = escala_de(m, reps[m])
+        esc = escala_de(m, n)          # con las reps escritas, no las del día
         # Y no se escribe si la escala es otro movimiento del mismo WOD. Salía
         # "· 10 Pistol / 20 Air Squat (Esc)" seguido de "· 12 Air Squat": el
         # que escala termina haciendo 32 sentadillas y el que va Rx, 12. La
@@ -326,6 +373,45 @@ def escribir(rnd, dia):
     # "5 Rounds (Cap 24')" seguido de la lista se entiende como 4 minutos de
     # trabajo en vez de 21.
     encabeza_rondas = [f'{rondas} Rounds:'] if rondas > 1 else []
+
+    # Los formatos nuevos, antes de los clásicos. Cada uno devuelve None si el
+    # día no le sirve —una escalera con Run adentro, una escalera de carga sin
+    # barra, un AMRAP de 8'— y entonces sigue de largo al clásico de respaldo.
+    if fmt_nuevo:
+        en_dist = lambda m: m in DIST
+        extra = None
+        rango = RANGO[dom]
+        hecho = None
+        if fmt_nuevo == 'ESCALERA':
+            hecho = fm.escalera(rnd, movs, dom, rango, linea, en_dist)
+        elif fmt_nuevo == 'ESCALERA-CARGA':
+            hecho = fm.escalera_de_carga(rnd, movs, dom, rango, linea,
+                                         en_dist, peso_de)
+        elif fmt_nuevo == 'INTERVALOS':
+            hecho = fm.intervalos(rnd, movs, dom, rango, linea,
+                                  trabajo_del_wod(movs, reps, 1))
+        elif fmt_nuevo == 'AMRAP-INTERRUMPIDO':
+            # El que interrumpe no puede estar ya adentro del AMRAP.
+            libres = [c for c in CORTES
+                      if c[0] not in movs and c[0] not in evitar]
+            corte = rnd.choice(libres) if libres else None
+            hecho = fm.amrap_interrumpido(rnd, movs, dom, rango, linea, cap,
+                                          corte)
+            # El movimiento que interrumpe es TRABAJO REAL y hay que
+            # declararlo. Sin esto, el generador no sabía que el día tenía
+            # Box Jump y el día siguiente lo volvía a poner: la auditoría
+            # marcaba 13 "movimiento en días seguidos" por cada 15 meses, y
+            # de paso se saltaba los techos y la separación. Es el mismo
+            # error que la línea "Evita" del sábado, al revés: allá se leía
+            # de más, acá se escribía sin avisar.
+            if hecho and corte:
+                extra = corte[0]
+        elif fmt_nuevo == 'AMRAP-ESCALERA':
+            hecho = fm.amrap_escalera(rnd, movs, dom, rango, linea, cap)
+        if hecho:
+            cab, cuerpo, cap = hecho
+            return ('WOD — ' + cab + '\n' + '\n'.join(cuerpo), fmt_nuevo, cap,
+                    movs + ([extra] if extra else []))
 
     if fmt == 'CHIPPER':
         cab, cuerpo = f"CHIPPER (Cap {cap}')", [linea(m) for m in movs]
@@ -341,4 +427,4 @@ def escribir(rnd, dia):
     else:
         cab = f"FOR TIME (Cap {cap}')"
         cuerpo = encabeza_rondas + [linea(m) for m in movs]
-    return 'WOD — ' + cab + '\n' + '\n'.join(cuerpo), fmt, cap
+    return 'WOD — ' + cab + '\n' + '\n'.join(cuerpo), fmt, cap, list(movs)

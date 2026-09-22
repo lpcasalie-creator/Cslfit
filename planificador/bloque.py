@@ -14,13 +14,13 @@ Ninguna inventada.
   ACCESSORY    "N sets x calidad:" + SIEMPRE 5 movimientos.
                Sets = minutos del bloque ÷ 4.
 """
-import random
+import random, re
 from notas import (notas_de_fuerza, notas_de_test, nota_single_pesado,
                    nota_metcon)
 
 # --- Fases del mes (regla 12) -------------------------------------------
 FASES = {
- 1: ('Base',              '@65-75%'),
+ 1: ('Base',              '@75-85%'),
  2: ('Desarrollo',        '@75-82%'),
  3: ('Consolidación',     '@78-85%'),
  4: ('Fuerza Máxima',     '@82-95%'),
@@ -37,10 +37,20 @@ FASES = {
 #   Mes 2   S1 80-85   S2 70-80   S3 78-83      plano
 #   Mes 3   S1 83-88   S2 83      S3 80         incluso baja
 #   Mes 4   S1 75-82   S3 88-92   S4 TEST       sube fuerte
+#
+# LA S1 DE CADA MES ES DESCARGA DEL MES ANTERIOR. Decisión suya del 22 de
+# septiembre, y hay que decir que NO sale de su planilla: se lo advertí y la
+# tomó igual. Sus números reales hacen lo contrario en un caso — el mes 2
+# cierra en 83% y el mes 3 abre en 88%, o sea sube. Los dos valores marcados
+# abajo son los que cambian por esta decisión; el resto queda medido.
+#
+# Con la descarga puesta, el ciclo baja en los cuatro empalmes:
+#   M1 S3 80-85 → M2 S1 75-80 → ... → M2 S4 80-85 → M3 S1 78-83
+#   M3 S4 83-88 → M4 S1 75-82 → M4 S4 TEST → M1 S1 75
 PCT_POR_MES = {
- 2: {1: '@80-85%', 2: '@75-80%', 3: '@78-83%', 4: '@80-85%'},
- 3: {1: '@83-88%', 2: '@83%',    3: '@80-85%', 4: '@83-88%'},
- 4: {1: '@75-82%', 2: '@82-88%', 3: '@88-92%', 4: 'TEST 1RM'},
+ 2: {1: '@75-80%', 2: '@80-85%', 3: '@78-83%', 4: '@80-85%'},   # S1 y S2 movidas
+ 3: {1: '@78-83%', 2: '@83%',    3: '@80-85%', 4: '@83-88%'},   # S1 movida
+ 4: {1: '@75-82%', 2: '@82-88%', 3: '@88-92%', 4: 'TEST 1RM'},  # ya descargaba
 }
 
 # EL MES 1 NO TIENE NI UN DATO. No existe la planilla, así que todo lo de
@@ -49,19 +59,27 @@ PCT_POR_MES = {
 # más cercano. Va marcado para que el generador pueda avisarlo, porque la
 # diferencia entre "esto lo mediste tú" y "esto lo supuse yo" es justamente
 # lo que hace confiable al resto.
-PCT_POR_MES[1] = {1: '@65-70%', 2: '@68-73%', 3: '@70-75%', 4: '@70-75%'}
+# La escalera del mes 1 la escribió él: S1 @75%, S2 @75-80%, S3 @80-85%, y la
+# S4 es el test. Yo tenía @65-70 → @70-75, que salía de leer la banda "Base
+# @65-75%" como si fuera el nivel de la sesión. No lo es: sus bloques arrancan
+# en 65-72% y SUBEN a 83-88% dentro de la misma sesión. Los porcentajes
+# escritos en su planilla son la rampa de adentro del bloque, no el techo de
+# la semana, y yo los estaba leyendo como techo.
+#
+#   Mes 2  S5 [70·78·80·85]   S6 [65·70·73·78·80·87]   S8 [65·68·73·76·82·83]
+#   Mes 3  S9 [72·80·83·88]   S10 [72·80·83·87·95]     S12 [72·80·85]
+PCT_POR_MES[1] = {1: '@75%', 2: '@75-80%', 3: '@80-85%', 4: '@80-85%'}
 
-# Sigue sin haber planilla del mes 1, pero ya no todo es suposición. El 22 de
-# septiembre él confirmó tres de las cuatro cosas que faltaban: la banda
-# (@65-75%), que lleva notas de potenciación como los meses 2-3, y que la
-# semana 4 busca un 2-3RM de olímpico. Lo único que queda extrapolado es el
-# reparto semana a semana dentro de la banda, que es un detalle menor al lado
-# de lo que había antes. El aviso se queda, pero diciendo eso y no más: un
-# aviso que exagera se termina ignorando, y entonces no avisa nada.
-MESES_SIN_DATO = {1}
-AVISO_SIN_DATO = ('La banda, las notas y el test de la S4 los confirmó él. '
-                  'Lo único extrapolado\n  es cómo se reparte la banda entre '
-                  'las semanas 1 a 3.')
+# El mes 1 ya no lleva aviso. Sigue sin existir su planilla, pero las cuatro
+# cosas que estaban extrapoladas las escribió él el 22 de septiembre: la
+# escalera semana a semana, las notas de potenciación, el test de la S4 y las
+# cinco cargas que faltaban. Un dato dictado por el entrenador no es una
+# suposición mía, y dejar el ⚠ puesto sería mentir en la otra dirección.
+#
+# El mecanismo se queda por si mañana hay otro mes sin datos.
+MESES_SIN_DATO = set()
+AVISO_SIN_DATO = ('Mes sin planilla de referencia: los porcentajes y la '
+                  'escalera de series\n  son extrapolados, no medidos.')
 
 # Compatibilidad: el promedio de los meses medidos, para quien no pase el mes.
 PCT_POR_SEMANA = PCT_POR_MES[3]
@@ -79,15 +97,17 @@ PCT_POR_SEMANA = PCT_POR_MES[3]
 # Que el test esté al final del ciclo y no al final de cada mes es coherente
 # con las fases: no se testea un 1RM en el mes "Base".
 #
-# El mes 1 lo respondió él (22 sept), y corrigiendo lo que yo había ofrecido:
-# no es un 1RM. "Una vez al mes, sobre todo semana 4, sacar 2-3RM, sobre todo
-# de movimientos de levantamiento olímpico". Lo cual es coherente con el
-# párrafo de arriba en vez de contradecirlo: no se maxea un single de snatch,
-# pero un 2-3RM de olímpico sí se busca, y es lo típico de un mes Base.
-TEST_DEL_MES = {1: 'olimpico', 2: 'parcial', 3: 'ninguno', 4: 'completo'}
+# El mes 1 pasó por dos versiones el mismo día. Primero dijo "una vez al mes,
+# sobre todo semana 4, sacar 2-3RM, sobre todo de olímpicos". Al escribir la
+# escalera puso la S4 en 85-100%, le pregunté qué significaba ese 100 con un
+# 2-3RM —que topa cerca de 90— y respondió que ahí sí quiere 1RM.
+#
+# Así que queda 'parcial': UN día de 1RM, que es el "una vez al mes" que dijo
+# desde el principio y que no cambió.
+TEST_DEL_MES = {1: 'parcial', 2: 'parcial', 3: 'ninguno', 4: 'completo'}
 # Y el rótulo de la semana 4 tiene que decir lo que realmente pasa.
 ROTULO_S4 = {'completo': 'TEST 1RM', 'parcial': 'TEST 1RM parcial',
-             'olimpico': 'Buscar 2-3RM', 'ninguno': 'Pesado del día'}
+             'ninguno': 'Pesado del día'}
 
 LEVANTAMIENTOS = ['Back Squat', 'Deadlift', 'Front Squat', 'Power Clean',
                   'Squat Snatch', 'Push Press', 'Power Snatch', 'Bench Press']
@@ -96,12 +116,12 @@ LEVANTAMIENTOS = ['Back Squat', 'Deadlift', 'Front Squat', 'Power Clean',
 # testea un snatch — fallar un snatch al 95% es un problema de técnica, no de
 # fuerza, y el número no dice nada.
 LEVANTAMIENTOS_DE_TEST = ['Back Squat', 'Deadlift', 'Power Clean']
-# El 2-3RM del mes Base va en olímpicos, que es lo que él pidió. La lista es
-# distinta de la de 1RM a propósito: un 2-3RM sí se puede buscar en un clean o
-# un snatch, porque a 85-88% la técnica todavía aguanta. Es justamente el
-# rango donde el número dice algo.
-LEVANTAMIENTOS_OLIMPICOS = ['Power Clean', 'Squat Clean', 'Clean and Jerk',
-                            'Power Snatch', 'Squat Snatch', 'Split Jerk']
+# El mes 1 testea 1RM pero pidió que fuera "sobre todo de olímpicos", así que
+# su lista suma Clean and Jerk y Squat Clean a las tres de siempre. Sigue sin
+# snatch, por la razón del párrafo de arriba: un single de snatch al 95% mide
+# técnica, no fuerza, y él nunca lo programó.
+LEVANTAMIENTOS_DE_TEST_MES1 = ['Power Clean', 'Clean and Jerk', 'Squat Clean',
+                               'Back Squat', 'Deadlift']
 COMPLEJOS = ['Power Clean + Split Jerk', 'Snatch Balance + OHS',
              'Clean Pull + Squat Clean', 'Push Press + Push Jerk']
 
@@ -152,6 +172,22 @@ METCON_PROPOSITO = [
 # ninguno de sus 60 bloques.
 
 
+_PCT_RE = re.compile(r'@\s*(\d+)')
+
+
+def _piso_de(rotulo, por_defecto=70):
+    """El número más bajo de un rótulo tipo '@80-85%' o '@75%'.
+
+    Solo lee lo que viene detrás de un '@'. Buscar cualquier dígito hacía que
+    'TEST 1RM' devolviera 1, y un complejo al 1% no lo caza nadie leyendo la
+    planilla. Hoy la semana de test se resuelve antes de llegar acá, así que
+    era un error que no se veía — de los que aparecen recién cuando alguien
+    mueve otra cosa.
+    """
+    m = _PCT_RE.search(rotulo or '')
+    return int(m.group(1)) if m else por_defecto
+
+
 def sets_para(minutos):
     """Sus sets: 20'→5, 17'→4, 12'→3. Es minutos entre cuatro."""
     return max(3, min(5, round(minutos / 4)))
@@ -171,21 +207,11 @@ def escribir_bloque(rnd, categoria, minutos, semana_del_mes, mes_del_ciclo,
     hay_test_en_s4 = test != 'ninguno'
 
     if categoria == 'STRENGTH':
-        # "Una vez al mes": el 2-3RM del Base es UN día, no una semana de test.
-        cupo_de_test = {'completo': 2, 'parcial': 1, 'olimpico': 1,
-                        'ninguno': 0}[test]
+        cupo_de_test = {'completo': 2, 'parcial': 1, 'ninguno': 0}[test]
         if semana_del_mes == 4 and dias_de_test < cupo_de_test:
-            if test == 'olimpico':
-                lev = rnd.choice([l for l in LEVANTAMIENTOS_OLIMPICOS
-                                  if l not in usados] or LEVANTAMIENTOS_OLIMPICOS)
-                # La rampa termina en 2-3 reps, no en un single: sube más
-                # suave y se corta antes. Llevarla a 95% sería el otro test.
-                return (f'{lev.upper()} — Buscar 2-3RM:\n'
-                        '60%x3 → 70%x3 → 78%x3\n'
-                        '→ 83%x2 → 87%x2 → 2-3RM\n'
-                        + '\n'.join(notas_de_test(lev)))
-            lev = rnd.choice([l for l in LEVANTAMIENTOS_DE_TEST if l not in usados]
-                             or LEVANTAMIENTOS_DE_TEST)
+            lista = (LEVANTAMIENTOS_DE_TEST_MES1 if mes_del_ciclo == 1
+                     else LEVANTAMIENTOS_DE_TEST)
+            lev = rnd.choice([l for l in lista if l not in usados] or lista)
             return (f'{lev.upper()} — Buscar 1RM:\n'
                     '60%x5 → 72%x3 → 82%x2\n'
                     '→ 90%x1 → 95%x1 → 1RM\n'
@@ -198,7 +224,13 @@ def escribir_bloque(rnd, categoria, minutos, semana_del_mes, mes_del_ciclo,
             return f'{lev} {esquema}\n(Buscar pesado del día)\n{nota}'
         if rnd.random() < 0.3:
             c = rnd.choice(COMPLEJOS)
-            base = {1: 70, 2: 75, 3: 80}[semana_del_mes]
+            # La rampa del complejo arranca en el piso de la semana. Estaba
+            # fija en 70/75/80 mirando solo la semana del mes, así que en el
+            # mes 4 —que va @88-92%— el complejo salía quince puntos abajo y
+            # en el mes 1 no seguía la escalera nueva. El porcentaje es del
+            # mes, no de la semana: eso ya estaba escrito arriba y esta rama
+            # era la única que no lo respetaba.
+            base = _piso_de(escalera[semana_del_mes])
             return (f'{c}\n2+1 x 2 @{base}%\n2+1 x 2 @{base+6}%\n1+1 x 3 @{base+12}%+')
         lev = rnd.choice([l for l in LEVANTAMIENTOS if l not in usados] or LEVANTAMIENTOS)
         series = {1: '5x5', 2: '5x4', 3: '4x3'}[semana_del_mes]

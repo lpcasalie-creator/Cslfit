@@ -60,6 +60,9 @@ def generar_semana(mes_del_ciclo, semana_del_mes, semilla=None,
     # Ahora la semana entera se descarta si un día no aterriza donde se pidió.
     # El reintento con otra semilla ya existía; solo faltaba usarlo para esto.
     dias, usados, dias_de_test = [], [], 0
+    # Todo lo que la semana ya tiene repartido. El plan está cerrado desde
+    # `proponer`, así que esto se conoce entero antes de escribir el lunes.
+    de_la_semana_entera = {m for dd in plan for m in dd['movs']}
     for d in plan:
         # Se reintenta EL DÍA, no la semana. La deriva viene del sorteo de
         # repeticiones —con las mismas piezas, otra tirada llega a la duración
@@ -72,7 +75,12 @@ def generar_semana(mes_del_ciclo, semana_del_mes, semilla=None,
         # dejaba 28 de 40 meses sin combinación — una regla tan estricta que
         # impedía programar es peor que un día que se corrió de casillero.
         for _ in range(12):
-            txt_wod, fmt, cap = escribir(rnd, d)
+            # `movs_escritos` puede traer más de lo que se planificó: un AMRAP
+            # interrumpido agrega el movimiento que corta. Hay que quedarse con
+            # esa lista y no con la del plan, o los techos, la separación y la
+            # regla de días seguidos quedan mirando un día que no existe.
+            txt_wod, fmt, cap, movs_escritos = escribir(
+                rnd, d, evitar=de_la_semana_entera)
             dom_final = ('fosfágeno' if cap < 14 else
                          'glucolítico' if cap <= 19 else 'aeróbico')
             if dom_final == d['dom']:
@@ -81,10 +89,7 @@ def generar_semana(mes_del_ciclo, semana_del_mes, semilla=None,
         txt_bloque = escribir_bloque(rnd, d['cat'], skill_min, semana_del_mes,
                                      mes_del_ciclo, usados, cap_del_wod=cap,
                                      dias_de_test=dias_de_test)
-        # 'Buscar' a secas: el mes 1 escribe "Buscar 2-3RM" y buscando solo
-        # "Buscar 1RM" el contador nunca subía, así que el cupo de un día por
-        # mes no se respetaba y podían salir dos.
-        if 'Buscar 1RM' in txt_bloque or 'Buscar 2-3RM' in txt_bloque:
+        if 'Buscar 1RM' in txt_bloque:
             dias_de_test += 1
         if d['cat'] == 'STRENGTH':
             usados.append(txt_bloque.split('\n')[0].split(' ')[0])
@@ -95,6 +100,7 @@ def generar_semana(mes_del_ciclo, semana_del_mes, semilla=None,
         dom_real = ('fosfágeno' if cap < 14 else
                     'glucolítico' if cap <= 19 else 'aeróbico')
         dias.append({**d, 'dom': dom_real, 'dom_pedido': d['dom'],
+                     'movs': movs_escritos,
                      'cap': cap, 'skill': skill_min,
                      'bloque': txt_bloque, 'wod': txt_wod})
 
