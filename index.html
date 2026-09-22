@@ -24,7 +24,7 @@
   :root{
     --bg:#0d0d0d; --bg2:#161616; --card:#1a1a1a;
     --lime:#CCFF00; --lime-dim:#a8d400;
-    --white:#ffffff; --gray:#bbbbbb; --gray-dim:#777777;
+    --white:#ffffff; --gray:#bbbbbb; --gray-dim:#8a8a8a;
     --border:#2a2a2a; --danger:#ff4d4d;
   }
   *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
@@ -59,9 +59,17 @@
   .muted{color:var(--gray); font-size:13px; line-height:1.5;}
 
   label{display:block; font-size:11px; color:var(--gray); text-transform:uppercase; letter-spacing:0.5px; margin:10px 0 4px;}
-  input[type=number], input[type=text], select, textarea{
+  input[type=number], input[type=text], input[type=email], input[type=password], input[type=date], select, textarea{
     width:100%; background:#0f0f0f; border:1px solid var(--border); color:var(--white);
     padding:10px 12px; border-radius:8px; font-size:15px; font-family:inherit;
+  }
+  /* Fix (auditoría UX): estos 4 tipos de input quedaban fuera del selector de
+     arriba y se veían con el fondo blanco por defecto del navegador, rompiendo
+     el tema oscuro en login/registro, fecha de InBody y fecha de asignación. */
+  input[type=date]{ color-scheme: dark; }
+  input[type=file]{
+    width:100%; background:#0f0f0f; border:1px solid var(--border); color:var(--gray);
+    padding:10px 12px; border-radius:8px; font-size:14px; font-family:inherit;
   }
   textarea{resize:vertical; min-height:90px;}
   input:focus, select:focus, textarea:focus{outline:none; border-color:var(--lime);}
@@ -500,7 +508,7 @@
     </div>
 
     <div class="card">
-      <h2>Calculadora 1RM <span class="badge">Fase 1</span></h2>
+      <h2>Calculadora 1RM</h2>
       <label>Unidad de peso</label>
       <select id="weightUnitSelect" onchange="setWeightUnit(this.value)">
         <option value="kg">Kilos (kg)</option>
@@ -551,7 +559,7 @@
   <!-- % BS — Fase 2: relaciones entre levantamientos -->
   <section id="pct" class="view">
     <div class="card">
-      <h2>Porcentajes y Relaciones <span class="badge">Fase 2</span></h2>
+      <h2>Porcentajes y Relaciones</h2>
       <div class="note">
         Ingresa tu PR en kg solo donde quieras. El <b>Back Squat</b> es el ancla: en cuanto lo llenas,
         toda la tabla calcula el 1RM estimado ideal de cada levantamiento según sus % de relación.
