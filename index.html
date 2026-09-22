@@ -6164,6 +6164,35 @@ const CSL_CHIPPER_ORIGINALES = [
 ];
 function _crossfitChipperOriginal(wi, ti, opts){ return _crossfitPickClasico(CSL_CHIPPER_ORIGINALES, wi, ti, opts, 555555); }
 
+const CROSSFIT_CLASICO_NAMES = new Set([
+  ...CSL_CHIPPER_ORIGINALES.map(c=>c.name),
+  ...CROSSFIT_SINGLE_CLASICOS.map(c=>c.name),
+  ...CROSSFIT_TRIPLET_CLASICOS.map(c=>c.name),
+]);
+// Fix (pedido de Luis, prueba real de "Continuar desde programa anterior" con 2
+// bloques encadenados): la memoria de 8 semanas de _crossfitPickClasico vive en
+// `opts`, que se crea de cero en cada "Generar automático" — al encadenar
+// programas, un WOD de la casa usado en la última semana del programa anterior
+// podía volver a salir en la primera semana del nuevo (confirmado con
+// simulación: "El Muro" se repitió justo en ese borde). Se reconstruye qué
+// clásicos aparecieron en el programa anterior, con su semana relativa al
+// inicio del programa NUEVO (negativa = antes de esa semana 0), para sembrar
+// opts._recentClasicos en autoGenerateProgram().
+function _crossfitExtractRecentClasicos(sessions, weeksCountOld){
+  const out = [];
+  (sessions||[]).forEach((semana, wiOld)=>{
+    (semana||[]).forEach(dia=>{
+      if(!dia || !dia.blocks) return;
+      const wodBlock = dia.blocks.find(b=>b.type==='metcon');
+      const nombre = wodBlock && wodBlock.movements && wodBlock.movements[0] && wodBlock.movements[0].name;
+      if(nombre && CROSSFIT_CLASICO_NAMES.has(nombre)){
+        out.push({ name: nombre, wi: wiOld - weeksCountOld });
+      }
+    });
+  });
+  return out;
+}
+
 function _crossfitDay(offset){
   return function(wi, isTest, opts, ti){
     // Ajuste 1 (Fase CrossFit 1): el patrón del día sigue rotando según semana+día,
@@ -6995,6 +7024,12 @@ function autoGenerateProgram(){
   const cicloWeekOffset = (focus==='crossfit') ? _prevProgramWeeksCache : 0;
   const cicloBlockOffset = Math.floor(cicloWeekOffset / 4);
   if(cicloWeekOffset) opts._cicloWeekOffset = cicloWeekOffset;
+  // Fix (ver comentario junto a _crossfitExtractRecentClasicos): siembra la
+  // memoria de WODs de la casa/clásicos del programa anterior, para que
+  // _crossfitPickClasico() no repita uno recién usado justo al cruzar de bloque.
+  if(focus==='crossfit' && _prevClasicosCache && _prevClasicosCache.length){
+    opts._recentClasicos = _prevClasicosCache.map(e=>({...e}));
+  }
   _generatedSessions = {};   // caché de sesiones v3 de esta generación
   _generatedFingerprint = {}; // huella del texto generado, para detectar edición manual
   const templates = [];
@@ -7625,14 +7660,25 @@ function importProgramFile(){
     }
     try{
       if(!p.name || !Array.isArray(p.data)) throw new Error('formato inválido');
-      const { error } = await sb.from('programs').insert({
+      // Fix (pedido de Luis, prueba real de exportar/reimportar un programa):
+      // antes se perdía `sessions` al reimportar — el texto quedaba igual, pero
+      // el programa reimportado ya no servía como fuente completa de "Continuar
+      // desde programa anterior" (esa función necesita `sessions`, no `data`).
+      // Mismo reintento defensivo que ya usa saveProgram() por si la columna
+      // `sessions` aún no existe en Supabase.
+      const bodyImport = {
         coach_id: currentUser.id,
         name: p.name, kind: p.kind||'grupal',
         athlete_name: p.athlete_name || p.athleteName || null,
         equipment: p.equipment || null,
         session_duration: p.session_duration || p.sessionDuration || null,
-        weeks: p.weeks, data: p.data
-      });
+        weeks: p.weeks, data: p.data, sessions: p.sessions || null
+      };
+      let { error } = await sb.from('programs').insert(bodyImport);
+      if(error && /sessions/i.test(error.message || '') && /column|schema|does not exist/i.test(error.message || '')){
+        const { sessions: _omitido, ...sinSessions } = bodyImport;
+        ({ error } = await sb.from('programs').insert(sinSessions));
+      }
       if(error) throw error;
       await renderProgList();
       await populateActiveProgSelect();
@@ -7663,6 +7709,10 @@ async function refreshAssignment(){
 // simulación — lo único que faltaba era este gancho: dejar que el coach elija
 // qué programa anterior usar como contexto antes de generar el bloque nuevo.
 let _prevWodSignaturesCache = null;
+// Fix (ver comentario junto a _crossfitExtractRecentClasicos): memoria de WODs
+// de la casa/clásicos del programa elegido en "Continuar desde", para que no
+// se repitan justo al cruzar de un bloque al siguiente.
+let _prevClasicosCache = null;
 // Fase 25: cuántas semanas tenía el programa elegido en "Continuar desde" — se usa
 // para desplazar la rotación de patrón/dominio y el bloque de benchmarks del
 // programa NUEVO (ver autoGenerateProgram/_crossfitDay), así dos ciclos
@@ -7687,12 +7737,13 @@ async function populateContinueFromSelect(){
 async function onContinueFromChange(){
   const programId = document.getElementById('genContinueFrom').value;
   const msg = document.getElementById('genContinueFromMsg');
-  if(!programId){ _prevWodSignaturesCache = null; _prevProgramWeeksCache = 0; msg.textContent = ''; return; }
+  if(!programId){ _prevWodSignaturesCache = null; _prevProgramWeeksCache = 0; _prevClasicosCache = null; msg.textContent = ''; return; }
   msg.textContent = 'Cargando...';
   const { data: prog, error } = await sb.from('programs').select('sessions, weeks').eq('id', programId).single();
   if(error || !prog){
     _prevWodSignaturesCache = null;
     _prevProgramWeeksCache = 0;
+    _prevClasicosCache = null;
     msg.textContent = 'No se pudo cargar ese programa (puede que no tenga estructura guardada).';
     return;
   }
@@ -7702,9 +7753,15 @@ async function onContinueFromChange(){
   _prevProgramWeeksCache = parseInt(prog.weeks) || 0;
   if(!prog.sessions){
     _prevWodSignaturesCache = null;
+    _prevClasicosCache = null;
     msg.textContent = 'No se pudo cargar la estructura de ese programa — la rotación de patrón/benchmark igual se ajusta, pero el WOD no busca estímulos distintos.';
     return;
   }
+  // Fix (ver comentario junto a _crossfitExtractRecentClasicos): independiente
+  // de si el programa anterior tiene WODs de CrossFit "reconocibles" para la
+  // continuidad de abajo — esto solo busca WODs de la casa/clásicos ya
+  // usados, para no repetirlos justo al cruzar de bloque.
+  _prevClasicosCache = _crossfitExtractRecentClasicos(prog.sessions, _prevProgramWeeksCache);
   const firmas = _crossfitSummarizePreviousBlock(prog.sessions);
   if(!firmas.length){
     _prevWodSignaturesCache = null;
