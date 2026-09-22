@@ -26,6 +26,7 @@
     --lime:#CCFF00; --lime-dim:#a8d400;
     --white:#ffffff; --gray:#bbbbbb; --gray-dim:#8a8a8a;
     --border:#2a2a2a; --danger:#ff4d4d;
+    --header-h: 84px; /* fallback — se recalcula en JS con la altura real del header */
   }
   *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
   body{
@@ -71,6 +72,17 @@
     width:100%; background:#0f0f0f; border:1px solid var(--border); color:var(--gray);
     padding:10px 12px; border-radius:8px; font-size:14px; font-family:inherit;
   }
+  /* Fix (auditoría UX): el fondo/borde de arriba no llega al botón "Elegir
+     archivo" en sí — es un control nativo aparte, necesita su propio pseudo-
+     elemento. Sin esto quedaba gris/blanco por defecto del navegador, mismo
+     problema que ya se corrigió para email/password/date. */
+  input[type=file]::file-selector-button{
+    background:var(--lime); color:#0d0d0d; border:none; border-radius:6px;
+    padding:6px 12px; font-weight:700; font-family:'Barlow Condensed',sans-serif;
+    text-transform:uppercase; letter-spacing:0.3px; font-size:13px; cursor:pointer;
+    margin-right:10px;
+  }
+  input[type=file]::file-selector-button:hover{ background:var(--lime-dim); }
   textarea{resize:vertical; min-height:90px;}
   input:focus, select:focus, textarea:focus{outline:none; border-color:var(--lime);}
 
@@ -160,6 +172,22 @@
     padding:10px 0; border-bottom:1px solid var(--border); font-size:13px;
   }
   .score-item .del{color:var(--danger); font-size:11px; cursor:pointer; text-transform:uppercase;}
+  /* Fix (auditoría de accesibilidad: 18 spans/divs con onclick, invisibles para
+     teclado y lector de pantalla — sin tabindex, sin role, sin foco). Se pasan a
+     <button> real; este reset les quita el fondo/borde/padding por defecto del
+     navegador para que se vean exactamente igual que antes como texto. */
+  button.del, button.skill-info, button.link-inline{
+    background:none; border:none; padding:0; margin:0; font:inherit; text-align:inherit;
+  }
+  button.del:focus-visible, button.skill-info:focus-visible, button.link-inline:focus-visible,
+  .rec-row.tap:focus-visible, .stat-tile.tap:focus-visible, button.daycell:focus-visible{
+    outline:2px solid var(--lime); outline-offset:2px;
+  }
+  .link-inline{color:var(--lime); text-decoration:underline; cursor:pointer;}
+  button.daycell{ display:block; width:100%; font:inherit; color:inherit; }
+  button.rec-row, button.stat-tile{
+    background:none; border:none; margin:0; font:inherit; width:100%; text-align:left;
+  }
 
   #toastContainer{
     position:fixed; left:0; right:0; bottom:calc(78px + env(safe-area-inset-bottom));
@@ -300,7 +328,7 @@
       </p>
       <p id="authError" style="color:#ff8c8c; font-size:12px; margin-top:8px; text-align:center;"></p>
       <p style="text-align:center; margin-top:14px; font-size:13px;">
-        ¿Tienes un código de tu coach? <span style="color:var(--lime); text-decoration:underline; cursor:pointer;" onclick="showSignupForm()">Regístrate aquí</span>
+        ¿Tienes un código de tu coach? <button type="button" class="link-inline" onclick="showSignupForm()">Regístrate aquí</button>
       </p>
     </div>
 
@@ -318,7 +346,7 @@
       </p>
       <p id="signupMsg" style="font-size:12px; margin-top:8px; text-align:center;"></p>
       <p style="text-align:center; margin-top:14px; font-size:13px;">
-        <span style="color:var(--lime); text-decoration:underline; cursor:pointer;" onclick="showLoginForm()">Volver a entrar</span>
+        <button type="button" class="link-inline" onclick="showLoginForm()">Volver a entrar</button>
       </p>
     </div>
 
@@ -855,8 +883,19 @@
   <section id="mov" class="view">
     <div class="card">
       <h2>Movimientos</h2>
-      <input type="text" id="movSearch" placeholder="Buscar movimiento..." oninput="renderMov()">
-      <button class="btn" style="margin-top:10px;" onclick="openScalingGuide()">📄 Guía de escalamiento completa (imprimir / PDF)</button>
+    </div>
+    <!-- Fix (auditoría UX): esta vista puede llegar a ~19.000px de largo. Antes,
+         después de buscar y bajar a ver resultados, había que volver a scrollear
+         hasta arriba para cambiar de búsqueda. sticky sólo "pega" dentro de la
+         altura de su propio contenedor — tenía que salir de la tarjeta chica
+         (184px) para vivir directo en la sección, que sí cubre todo el largo de
+         la lista de movimientos; si no, dejaba de pegarse apenas se pasaba esa
+         tarjeta. -->
+    <div style="position:sticky; top:var(--header-h); z-index:10; background:var(--bg); padding:10px 18px; margin:0 -18px;">
+      <input type="text" id="movSearch" placeholder="Buscar movimiento..." oninput="renderMov()" style="margin:0;">
+    </div>
+    <div class="card">
+      <button class="btn" style="margin-top:0;" onclick="openScalingGuide()">📄 Guía de escalamiento completa (imprimir / PDF)</button>
     </div>
     <div class="card" id="movList"></div>
 
@@ -1099,6 +1138,31 @@
 </div>
 
 <script>
+// Fix (auditoría UX, buscador sticky de Movimientos): el header ya usa
+// position:sticky/top:0 — cualquier otro elemento sticky a top:0 queda tapado
+// debajo (mismo z-index de apilamiento). --header-h guarda su altura real
+// (varía por safe-area-inset-top del dispositivo y si el subtítulo hace wrap
+// a 2 líneas en pantallas angostas), para que otros sticky puedan ubicarse
+// justo debajo con `top:var(--header-h)` en vez de un número adivinado.
+function _updateHeaderHeightVar(){
+  const header = document.querySelector('header.topbar');
+  // Bug real encontrado al probar (no solo teoría): el header vive dentro de
+  // #appRoot, que arranca en display:none hasta que termina el login — en ese
+  // estado offsetHeight da 0 sin importar cuándo se llame (load/resize
+  // incluidos, si el login todavía no terminó). ResizeObserver sí dispara de
+  // nuevo cuando #appRoot pasa a visible y el header realmente toma su alto.
+  if(header && header.offsetHeight > 0) document.documentElement.style.setProperty('--header-h', header.offsetHeight + 'px');
+}
+window.addEventListener('resize', _updateHeaderHeightVar);
+_updateHeaderHeightVar(); // el <header> ya existe en el DOM en este punto del parseo (puede dar 0 si #appRoot sigue oculto — se corrige abajo)
+if(window.ResizeObserver){
+  const _headerRO = new ResizeObserver(_updateHeaderHeightVar);
+  document.addEventListener('DOMContentLoaded', () => {
+    const header = document.querySelector('header.topbar');
+    if(header) _headerRO.observe(header);
+  });
+}
+
 function escapeHtml(str){
   return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -1469,7 +1533,7 @@ async function renderHomeDashboard(){
 
   const recentEl = document.getElementById('homeRecords');
   recentEl.innerHTML = currentRecords.slice(0,6).map(a=>
-    `<div class="rec-row tap" onclick="openRecordProgress('${a.kind}', ${JSON.stringify(a.name).replace(/"/g,'&quot;')})"><b>${escapeHtml(a.name)}</b><span class="v">${escapeHtml(a.display)}</span></div>`
+    `<button type="button" class="rec-row tap" onclick="openRecordProgress('${a.kind}', ${JSON.stringify(a.name).replace(/"/g,'&quot;')})"><b>${escapeHtml(a.name)}</b><span class="v">${escapeHtml(a.display)}</span></button>`
   ).join('');
 
   const now = Date.now();
@@ -1486,7 +1550,7 @@ async function renderHomeDashboard(){
   }
 
   const streakTile = checkinsAvailable
-    ? `<div class="stat-tile tap" onclick="markCheckinToday()"><div class="n">${streak}${checkedInToday?' ✓':''}</div><div class="l">Racha (días)</div></div>`
+    ? `<button type="button" class="stat-tile tap" onclick="markCheckinToday()"><div class="n">${streak}${checkedInToday?' ✓':''}</div><div class="l">Racha (días)</div></button>`
     : '';
   const statRowEl = document.getElementById('homeStatRow');
   statRowEl.style.gridTemplateColumns = checkinsAvailable ? '1fr 1fr 1fr' : '1fr 1fr';
@@ -2125,7 +2189,7 @@ async function renderRMHistory(){
   // escapa al insertarlo en innerHTML (ver renderProgressHero, bar analysis,
   // toggleAthleteProgress) — este era el único punto que lo insertaba crudo.
   document.getElementById('rmHistory').innerHTML = _rmHistCache.length
-    ? _rmHistCache.map(h=>`<div class="score-item"><span>${escapeHtml(h.movement)} — <b>${fmtWeight(Number(h.rm))}</b> <span class="muted">(${new Date(h.created_at).toLocaleDateString('es-CL')})</span></span><span class="del" onclick="delRM('${h.id}')">Borrar</span></div>`).join('')
+    ? _rmHistCache.map(h=>`<div class="score-item"><span>${escapeHtml(h.movement)} — <b>${fmtWeight(Number(h.rm))}</b> <span class="muted">(${new Date(h.created_at).toLocaleDateString('es-CL')})</span></span><button type="button" class="del" onclick="delRM('${h.id}')">Borrar</button></div>`).join('')
     : '<p class="muted">Sin registros aún.</p>';
 }
 async function delRM(id){
@@ -2355,7 +2419,7 @@ async function renderBodyList(){
   document.getElementById('bodyList').innerHTML = reversed.length ? reversed.map((h)=>{
     const parts = Object.keys(BODY_METRICS).filter(k=>h[BODY_METRICS[k].col]!==null && h[BODY_METRICS[k].col]!==undefined)
       .map(k=>`${BODY_METRICS[k].label}: ${h[BODY_METRICS[k].col]}${BODY_METRICS[k].unit}`).join(' · ');
-    return `<div class="score-item"><span><b>${h.entry_date}</b><br><span class="muted">${parts||'Sin datos'}</span></span><span class="del" onclick="delBody('${h.id}')">Borrar</span></div>`;
+    return `<div class="score-item"><span><b>${h.entry_date}</b><br><span class="muted">${parts||'Sin datos'}</span></span><button type="button" class="del" onclick="delBody('${h.id}')">Borrar</button></div>`;
   }).join('') : '<p class="muted">Sin mediciones registradas.</p>';
 }
 async function delBody(id){
@@ -2408,7 +2472,7 @@ function renderSkillsSliders(){
     const v = last ? last[s.key] : 5;
     return `<div class="skill-row">
       <div class="skill-head">
-        <span>${s.label} <span class="skill-info" onclick="toggleSkillDesc('${s.key}')" style="cursor:pointer;opacity:0.7;">ⓘ</span></span>
+        <span>${s.label} <button type="button" class="skill-info" onclick="toggleSkillDesc('${s.key}')" aria-label="Más información sobre ${s.label}" style="cursor:pointer;opacity:0.7;">ⓘ</button></span>
         <span class="skill-val" id="val_${s.key}">${v}</span>
       </div>
       <div id="desc_${s.key}" class="skill-desc" style="display:none;font-size:12px;color:#bbbbbb;margin:4px 0 6px;">${s.desc}</div>
@@ -2504,7 +2568,7 @@ function renderSkillsHistory(){
   document.getElementById('skillsHistoryList').innerHTML = _skillsHistCache.length
     ? _skillsHistCache.slice().reverse().map((h)=>{
         const avg = (SKILLS_LIST.reduce((sum,s)=>sum+h[s.key],0)/SKILLS_LIST.length).toFixed(1);
-        return `<div class="score-item"><span>${h.entry_date} — <b>promedio ${avg}</b></span><span class="del" onclick="delSkills('${h.id}')">Borrar</span></div>`;
+        return `<div class="score-item"><span>${h.entry_date} — <b>promedio ${avg}</b></span><button type="button" class="del" onclick="delSkills('${h.id}')">Borrar</button></div>`;
       }).join('')
     : '<p class="muted">Sin evaluaciones registradas.</p>';
 }
@@ -7489,8 +7553,8 @@ function renderBlocksList(){
     items.forEach(b=>{
       html += `<div class="score-item"><span><b>${escapeHtml(b.title)}</b><br><span class="muted" style="font-size:11px;">${escapeHtml(b.content.replace(/\n/g,' · ').slice(0,80))}</span></span>
         <span style="display:flex; gap:8px; flex-shrink:0;">
-          <span class="del" style="color:var(--lime);" onclick="editBlock('${b.id}')">Editar</span>
-          <span class="del" onclick="deleteBlock('${b.id}')">Borrar</span>
+          <button type="button" class="del" style="color:var(--lime);" onclick="editBlock('${b.id}')">Editar</button>
+          <button type="button" class="del" onclick="deleteBlock('${b.id}')">Borrar</button>
         </span></div>`;
     });
     html += `</div>`;
@@ -7647,10 +7711,10 @@ async function renderProgList(){
       <div class="score-item" style="border:none; padding:0;">
         <span><b>${escapeHtml(p.name)}</b><br><span class="muted">${sub} · ${p.weeks} semanas</span></span>
         <span style="display:flex; gap:10px; flex-shrink:0; flex-wrap:wrap;">
-          <span class="del" style="color:var(--lime);" onclick="toggleProgView('${p.id}')">Ver</span>
-          <span class="del" style="color:var(--lime);" onclick="editProgram('${p.id}')">Editar</span>
-          <span class="del" style="color:var(--lime);" onclick="exportProgram('${p.id}')">Exportar</span>
-          <span class="del" onclick="deleteProgram('${p.id}')">Borrar</span>
+          <button type="button" class="del" style="color:var(--lime);" onclick="toggleProgView('${p.id}')">Ver</button>
+          <button type="button" class="del" style="color:var(--lime);" onclick="editProgram('${p.id}')">Editar</button>
+          <button type="button" class="del" style="color:var(--lime);" onclick="exportProgram('${p.id}')">Exportar</button>
+          <button type="button" class="del" onclick="deleteProgram('${p.id}')">Borrar</button>
         </span>
       </div>
       <div id="progView_${p.id}" style="display:none; margin-top:10px;"></div>
@@ -8007,13 +8071,13 @@ function renderActiveProgramCard(){
     const c = normalizeDayContent(r.program.data[r.weekIdx][i]);
     const isToday = d.toDateString() === r.today.toDateString();
     const hasContent = !isDayEmpty(c);
-    return `<div onclick="selectProgDay(${i})" data-daycell="${i}"
+    return `<button type="button" class="daycell" onclick="selectProgDay(${i})" data-daycell="${i}"
         style="flex:1; text-align:center; padding:8px 2px; border-radius:8px; cursor:pointer;
         border:1px solid ${isToday?'#CCFF00':'#2a2a2a'}; background:${isToday?'#1c2200':'#141414'};">
       <div style="font-size:10px; color:#888; text-transform:uppercase;">${DAY_NAMES[i].slice(0,3)}</div>
       <div style="font-size:13px; font-weight:700; color:${isToday?'#CCFF00':'#fff'};">${fmtDateShort(d)}</div>
       <div style="font-size:9px; color:${hasContent?'#8fd694':'#555'}; margin-top:2px;">${hasContent?'●':'—'}</div>
-    </div>`;
+    </button>`;
   }).join('');
 
   document.getElementById('activeProgramContent').innerHTML = `
@@ -8139,7 +8203,7 @@ async function renderInviteCodesList(){
   el.innerHTML = data.map(c=>{
     const status = c.used_by ? `<span style="color:#8fd694;">Usado ${new Date(c.used_at).toLocaleDateString('es-CL')}</span>` : `<span class="muted">Sin usar</span>`;
     return `<div class="score-item"><span><b>${escapeHtml(c.code)}</b>${c.note?` — <span class="muted">${escapeHtml(c.note)}</span>`:''}<br>${status}</span>
-      ${c.used_by ? '' : `<span class="del" onclick="deleteInviteCode('${c.code}')">Borrar</span>`}</div>`;
+      ${c.used_by ? '' : `<button type="button" class="del" onclick="deleteInviteCode('${c.code}')">Borrar</button>`}</div>`;
   }).join('');
 }
 async function deleteInviteCode(code){
@@ -9024,6 +9088,16 @@ function identifyMovement(text){
 }
 
 
+// Fix (auditoría de accesibilidad): antes vivía como lógica inline dentro del
+// onclick del span "Ver escalamiento" (this.nextElementSibling...) — al pasar
+// ese control a <button> real, se extrae a función nombrada, más legible y
+// reutilizable que repetir la misma expresión en el atributo.
+function toggleScalingSteps(btn){
+  const list = btn.nextElementSibling;
+  const show = list.style.display !== 'block';
+  list.style.display = show ? 'block' : 'none';
+  btn.textContent = show ? 'Ocultar escalamiento ▲' : 'Ver escalamiento ▼';
+}
 function renderMov(){
   const q = (document.getElementById('movSearch')?.value||'').toLowerCase();
   let html = '';
@@ -9038,7 +9112,7 @@ function renderMov(){
         const scaling = MOVEMENT_SCALING[m];
         const scalingHtml = scaling ? `
           <div style="margin-top:6px;">
-            <span class="del" style="color:var(--lime);" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display==='block' ? 'none' : 'block'; this.textContent = this.textContent.includes('Ver') ? 'Ocultar escalamiento ▲' : 'Ver escalamiento ▼';">Ver escalamiento ▼</span>
+            <button type="button" class="del" style="color:var(--lime);" onclick="toggleScalingSteps(this)">Ver escalamiento ▼</button>
             <ol style="display:none; margin:6px 0 0 18px; font-size:12px; color:var(--gray); padding:0;">
               ${scaling.map(step=>`<li style="margin-bottom:3px;">${step}</li>`).join('')}
             </ol>
@@ -9343,7 +9417,7 @@ function renderBarPointsList(){
   const el = document.getElementById('barPointsList');
   if(!barPoints.length){ el.innerHTML = '<span class="muted">Sin puntos marcados.</span>'; return; }
   el.innerHTML = barPoints.map((p,i)=>
-    `t=${p.t.toFixed(3)}s (${Math.round(p.x)}, ${Math.round(p.y)}) <span class="del" onclick="removeBarPoint(${i})">Borrar</span>`
+    `t=${p.t.toFixed(3)}s (${Math.round(p.x)}, ${Math.round(p.y)}) <button type="button" class="del" onclick="removeBarPoint(${i})">Borrar</button>`
   ).join('<br>');
 }
 function removeBarPoint(i){ barPoints.splice(i,1); renderBarPointsList(); redrawBarCanvas(); }
@@ -9453,8 +9527,8 @@ async function renderBarAnalysisList(){
         <span><b>${escapeHtml(a.movement)}</b> — pico ${Number(a.peak_velocity).toFixed(2)} m/s, prom ${Number(a.avg_velocity).toFixed(2)} m/s<br>
         <span class="muted">${new Date(a.created_at).toLocaleDateString('es-CL')}</span></span>
         <span style="display:flex; gap:10px; flex-shrink:0;">
-          <span class="del" style="color:var(--lime);" onclick="toggleBarAnalysisDetail('${a.id}')">Ver</span>
-          <span class="del" onclick="deleteBarAnalysis('${a.id}')">Borrar</span>
+          <button type="button" class="del" style="color:var(--lime);" onclick="toggleBarAnalysisDetail('${a.id}')">Ver</button>
+          <button type="button" class="del" onclick="deleteBarAnalysis('${a.id}')">Borrar</button>
         </span>
       </div>
       <div id="barDetail_${a.id}" style="display:none; margin-top:10px;"></div>
@@ -9630,7 +9704,7 @@ async function renderScores(){
   const catLabel = {girls:'Girls', hero:'Hero', custom:''};
   document.getElementById('scoreList').innerHTML = scores.map((s)=>{
     const isPR = prIds.has(s.id);
-    return `<div class="score-item"><span>${escapeHtml(s.name)}${catLabel[s.category]?` <span class="muted">(${catLabel[s.category]})</span>`:''} — <b>${escapeHtml(s.result)}</b> ${isPR?'🏆':''} <span class="muted">(${s.entry_date})</span></span><span class="del" onclick="delScore('${s.id}')">Borrar</span></div>`;
+    return `<div class="score-item"><span>${escapeHtml(s.name)}${catLabel[s.category]?` <span class="muted">(${catLabel[s.category]})</span>`:''} — <b>${escapeHtml(s.result)}</b> ${isPR?'🏆':''} <span class="muted">(${s.entry_date})</span></span><button type="button" class="del" onclick="delScore('${s.id}')">Borrar</button></div>`;
   }).join('');
 }
 async function delScore(id){
