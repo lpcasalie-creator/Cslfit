@@ -8,31 +8,33 @@ from prescribir import escribir
 from bloque import (escribir_bloque, FASES, PCT_POR_MES,
                     TEST_DEL_MES, ROTULO_S4, MESES_SIN_DATO, AVISO_SIN_DATO)
 from sabado import armar_sabado
-from leer_wod import leer
 
 PUNTO = {'fosfágeno': '🟢', 'glucolítico': '🟡', 'aeróbico': '🔴'}
 ANCHO = 66
 
 
 def _cargado(dias):
-    """Lo que la semana puso encima: cada WOD entero, más el levantamiento
-    principal de cada bloque de fuerza — nunca la lista de accesorios.
+    """Lo que la semana puso encima: cada WOD entero, más los levantamientos
+    del bloque de fuerza — nunca la lista de accesorios.
 
-    La diferencia importa para la línea "Evita". Leyendo el bloque completo se
+    La diferencia importa para la línea "Evita". Contando el bloque completo se
     colaban Pendlay Row, Hip Thrust, Single-Leg RDL y Skin the Cat, que son
     trabajo de calidad dentro de un "N sets x calidad" y él no los avisa nunca.
     Sus cuatro líneas del mes 3 nombran barra y gimnasia dura, nada más.
+
+    Antes esto VOLVÍA A LEER el texto que el propio generador acababa de
+    escribir, con `leer()`, y recortaba la primera línea buscando '+' y la
+    palabra "calidad". Ese camino ya produjo dos errores —la línea "Evita" que
+    se leía de más y el encabezado "INTERVALOS" que entraba como movimiento—
+    así que ahora cada parte declara lo suyo y acá solo se junta.
 
     Se devuelve CON repeticiones: lo que salió dos veces en la semana pesa más
     que lo que salió una, y eso es lo que ordena la lista.
     """
     out = []
     for d in dias:
-        primera = d['bloque'].split('\n')[0]
-        if 'calidad' not in primera.lower() and 'sets' not in primera.lower():
-            for pieza in primera.split('+'):
-                out += leer(pieza)['movimientos']
-        out += leer(d['wod'])['movimientos']
+        out += d['movs_bloque']
+        out += d['movs']
     return out
 
 
@@ -86,13 +88,15 @@ def generar_semana(mes_del_ciclo, semana_del_mes, semilla=None,
             if dom_final == d['dom']:
                 break
         skill_min = 20 if cap < 14 else (17 if cap <= 19 else 12)
-        txt_bloque = escribir_bloque(rnd, d['cat'], skill_min, semana_del_mes,
-                                     mes_del_ciclo, usados, cap_del_wod=cap,
-                                     dias_de_test=dias_de_test)
+        txt_bloque, levs = escribir_bloque(
+            rnd, d['cat'], skill_min, semana_del_mes, mes_del_ciclo, usados,
+            cap_del_wod=cap, dias_de_test=dias_de_test)
         if 'Buscar 1RM' in txt_bloque:
             dias_de_test += 1
-        if d['cat'] == 'STRENGTH':
-            usados.append(txt_bloque.split('\n')[0].split(' ')[0])
+        # `usados` guarda los nombres tal cual, que es como los pide
+        # `escribir_bloque` para excluirlos. Antes guardaba la primera palabra
+        # del texto ('Back' por 'Back Squat') y la exclusión no calzaba nunca.
+        usados += levs
         # El dominio se lee del cap FINAL, no del que se pidió al planificar.
         # Si el techo de volumen impidió llegar a los 20 minutos, el día es
         # glucolítico aunque se hubiera pedido aeróbico — y decir otra cosa
@@ -100,12 +104,20 @@ def generar_semana(mes_del_ciclo, semana_del_mes, semilla=None,
         dom_real = ('fosfágeno' if cap < 14 else
                     'glucolítico' if cap <= 19 else 'aeróbico')
         dias.append({**d, 'dom': dom_real, 'dom_pedido': d['dom'],
-                     'movs': movs_escritos,
+                     'movs': movs_escritos, 'movs_bloque': levs,
                      'cap': cap, 'skill': skill_min,
                      'bloque': txt_bloque, 'wod': txt_wod})
 
     # El sábado también respeta el techo mensual, contando los cinco días que
     # se acaban de armar: sin eso cruzaba el máximo justo al final de la semana.
+    #
+    # Va el WOD y NO los levantamientos del bloque, aunque ahora estén a mano.
+    # Probé sumarlos y la auditoría saltó de 21 a 40 hallazgos en 90 meses. La
+    # razón es que `TECHO_MENSUAL` se calibró contando SOLO los WODs de sus
+    # planillas: los bloques viven en otra estructura y nunca entraron a ese
+    # conteo. Meterlos acá los hace gastar un cupo que se midió sin ellos, y el
+    # generador se queda corto por un motivo falso. Para contarlos habría que
+    # recalibrar el techo con los bloques adentro, que es otro trabajo.
     de_la_semana = [{'cat': 'X', 'movs': d['movs']} for d in dias]
     # El sábado cierra la semana, así que el viernes es "ayer" para él: sin la
     # separación acá, un Power Clean del viernes volvía al día siguiente y el
