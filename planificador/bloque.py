@@ -1,0 +1,283 @@
+# -*- coding: utf-8 -*-
+"""El bloque de Skill/Fuerza: lo que va antes del WOD.
+
+Cuatro estructuras distintas, derivadas de los 20 bloques de septiembre.
+Ninguna inventada.
+
+  STRENGTH     un levantamiento + escalera de % + notas con *
+               El % lo manda la fase del mes (regla 12), no el azar.
+  GYMNASTICS   "N sets x calidad:" + 2-3 bloques PROG.
+               El foco del ciclo se mantiene las cuatro semanas y progresa;
+               los acompañantes rotan. En septiembre Bar MU estuvo en las 4.
+  METCON       modalidad — propósito + intervalos + *Registrar
+               El propósito progresa: técnica → umbral → VO2max → activación.
+  ACCESSORY    "N sets x calidad:" + SIEMPRE 5 movimientos.
+               Sets = minutos del bloque ÷ 4.
+"""
+import random, re
+from notas import (notas_de_fuerza, notas_de_test, nota_single_pesado,
+                   nota_metcon)
+
+# --- Fases del mes (regla 12) -------------------------------------------
+FASES = {
+ 1: ('Base',              '@75-85%'),
+ 2: ('Desarrollo',        '@75-82%'),
+ 3: ('Consolidación',     '@78-85%'),
+ 4: ('Fuerza Máxima',     '@82-95%'),
+}
+# Porcentaje por semana. Esto estaba MAL y de forma sistemática: mi escalera
+# decía @70-75% para la semana 1, y sus doce bloques de levantamiento simple
+# de los meses 2, 3 y 4 van de 75% a 88% en semana 1. Ninguno de los doce
+# coincidía con lo que yo escribía.
+#
+# Y el error de fondo era otro: el porcentaje NO es función de la semana del
+# mes, es función del MES. Solo el mes 4 tiene una escalera limpia que sube
+# hacia el test; los meses 2 y 3 se quedan en su banda sin rampa.
+#
+#   Mes 2   S1 80-85   S2 70-80   S3 78-83      plano
+#   Mes 3   S1 83-88   S2 83      S3 80         incluso baja
+#   Mes 4   S1 75-82   S3 88-92   S4 TEST       sube fuerte
+#
+# LA S1 DE CADA MES ES DESCARGA DEL MES ANTERIOR. Decisión suya del 22 de
+# septiembre, y hay que decir que NO sale de su planilla: se lo advertí y la
+# tomó igual. Sus números reales hacen lo contrario en un caso — el mes 2
+# cierra en 83% y el mes 3 abre en 88%, o sea sube. Los dos valores marcados
+# abajo son los que cambian por esta decisión; el resto queda medido.
+#
+# Con la descarga puesta, el ciclo baja en los cuatro empalmes:
+#   M1 S3 80-85 → M2 S1 75-80 → ... → M2 S4 80-85 → M3 S1 78-83
+#   M3 S4 83-88 → M4 S1 75-82 → M4 S4 TEST → M1 S1 75
+PCT_POR_MES = {
+ 2: {1: '@75-80%', 2: '@80-85%', 3: '@78-83%', 4: '@80-85%'},   # S1 y S2 movidas
+ 3: {1: '@78-83%', 2: '@83%',    3: '@80-85%', 4: '@83-88%'},   # S1 movida
+ 4: {1: '@75-82%', 2: '@82-88%', 3: '@88-92%', 4: 'TEST 1RM'},  # ya descargaba
+}
+
+# La escalera del mes 1 la escribió él: S1 @75%, S2 @75-80%, S3 @80-85%, y la
+# S4 es el test. Yo tenía @65-70 → @70-75, que salía de leer la banda "Base
+# @65-75%" como si fuera el nivel de la sesión. No lo es: sus bloques arrancan
+# en 65-72% y SUBEN a 83-88% dentro de la misma sesión. Los porcentajes
+# escritos en su planilla son la rampa de adentro del bloque, no el techo de
+# la semana, y yo los estaba leyendo como techo.
+#
+#   Mes 2  S5 [70·78·80·85]   S6 [65·70·73·78·80·87]   S8 [65·68·73·76·82·83]
+#   Mes 3  S9 [72·80·83·88]   S10 [72·80·83·87·95]     S12 [72·80·85]
+PCT_POR_MES[1] = {1: '@75%', 2: '@75-80%', 3: '@80-85%', 4: '@80-85%'}
+
+# El mes 1 ya no lleva aviso. Sigue sin existir su planilla, pero las cuatro
+# cosas que estaban extrapoladas las escribió él el 22 de septiembre: la
+# escalera semana a semana, las notas de potenciación, el test de la S4 y las
+# cinco cargas que faltaban. Un dato dictado por el entrenador no es una
+# suposición mía, y dejar el ⚠ puesto sería mentir en la otra dirección.
+#
+# El mecanismo se queda por si mañana hay otro mes sin datos.
+MESES_SIN_DATO = set()
+AVISO_SIN_DATO = ('Mes sin planilla de referencia: los porcentajes y la '
+                  'escalera de series\n  son extrapolados, no medidos.')
+
+# Compatibilidad: el promedio de los meses medidos, para quien no pase el mes.
+PCT_POR_SEMANA = PCT_POR_MES[3]
+
+# LA SEMANA 4 NO ES SEMANA DE TEST EN TODOS LOS MESES. Yo la tenía forzada a
+# 1RM siempre, y sus tres planillas dicen otra cosa:
+#
+#   Mes 2, S8    UN solo 1RM — Back Squat el martes. Los otros cuatro días son
+#                bloques normales (Power Snatch + OHS, complejo de jerks...).
+#   Mes 3, S12   CERO 1RM. Dos "Buscar pesado del día" — Snatch Balance + OHS
+#                y Power Clean 3-2-2-1-1. Nunca escribe 1RM ese mes.
+#   Mes 4, S16   Test completo: lunes de activación, Back Squat 1RM el martes,
+#                Deadlift + Power Clean 1RM el jueves.
+#
+# Que el test esté al final del ciclo y no al final de cada mes es coherente
+# con las fases: no se testea un 1RM en el mes "Base".
+#
+# El mes 1 pasó por dos versiones el mismo día. Primero dijo "una vez al mes,
+# sobre todo semana 4, sacar 2-3RM, sobre todo de olímpicos". Al escribir la
+# escalera puso la S4 en 85-100%, le pregunté qué significaba ese 100 con un
+# 2-3RM —que topa cerca de 90— y respondió que ahí sí quiere 1RM.
+#
+# Así que queda 'parcial': UN día de 1RM, que es el "una vez al mes" que dijo
+# desde el principio y que no cambió.
+TEST_DEL_MES = {1: 'parcial', 2: 'parcial', 3: 'ninguno', 4: 'completo'}
+# Y el rótulo de la semana 4 tiene que decir lo que realmente pasa.
+ROTULO_S4 = {'completo': 'TEST 1RM', 'parcial': 'TEST 1RM parcial',
+             'ninguno': 'Pesado del día'}
+
+LEVANTAMIENTOS = ['Back Squat', 'Deadlift', 'Front Squat', 'Power Clean',
+                  'Squat Snatch', 'Push Press', 'Power Snatch', 'Bench Press']
+# Un 1RM se busca en los levantamientos que se pueden fallar sin técnica: los
+# suyos son Back Squat (mes 2 y mes 4), Deadlift y Power Clean (mes 4). Nunca
+# testea un snatch — fallar un snatch al 95% es un problema de técnica, no de
+# fuerza, y el número no dice nada.
+LEVANTAMIENTOS_DE_TEST = ['Back Squat', 'Deadlift', 'Power Clean']
+# El mes 1 testea 1RM pero pidió que fuera "sobre todo de olímpicos", así que
+# su lista suma Clean and Jerk y Squat Clean a las tres de siempre. Sigue sin
+# snatch, por la razón del párrafo de arriba: un single de snatch al 95% mide
+# técnica, no fuerza, y él nunca lo programó.
+LEVANTAMIENTOS_DE_TEST_MES1 = ['Power Clean', 'Clean and Jerk', 'Squat Clean',
+                               'Back Squat', 'Deadlift']
+COMPLEJOS = ['Power Clean + Split Jerk', 'Snatch Balance + OHS',
+             'Clean Pull + Squat Clean', 'Push Press + Push Jerk']
+
+# Progresiones de gimnasia: foco del ciclo + acompañantes
+PROGRESIONES = {
+ 'BAR MU':       ['5 Hip to Bar + 3 transición Pull+Push', '3/2 Bar MU completo',
+                  '3/2 Bar MU — máximo intento', 'Max Bar MU unbroken'],
+ 'HSPU':         ['5/3 HSPU estricto', '5/3 HSPU con AbMat', '5/3 HSPU kipping',
+                  'Max HSPU estricto unbroken'],
+ 'RING DIP':     ['6/4 Ring Dip estricto', '5/3 Ring Dip estricto',
+                  '5/3 Ring Dip + :10 hold', 'Max Ring Dip estricto'],
+ 'SKIN THE CAT': ['3 German Hang :20', '3 Skin the Cat completo',
+                  '3 Skin the Cat completo', '5 Skin the Cat + 10 Hollow Rock'],
+ 'L-SIT':        [':15 L-Sit en barras', ':20 L-Sit en anillas',
+                  ':25 L-Sit en anillas', 'Max L-Sit en anillas'],
+ 'PISTOL':       ['5/5 Pistol a caja', '5/5 Pistol asistido',
+                  '3/3 Pistol libre', 'Max Pistol libre c/lado'],
+}
+FOCO_DEL_CICLO = 'BAR MU'      # regla 6: no cambia el punto de partida cada semana
+
+ACCESORIOS = [
+ '10 DB Lateral Raise', '10 Face Pull', '8 Single Arm DB Row',
+ '10 Glute Bridge con barra', '30" Side Plank c/lado', '10 Pendlay Row',
+ '10 Single Leg RDL DB', '5/5 Turkish Get-Up (accesorio)',
+ '30" Copenhagen Plank c/lado', '10 Ab Wheel', '20" L-Sit en anillas',
+ '8 DB Row pesado c/lado', '10 Hip Thrust con barra', '10 Band Pull Apart',
+ '12 Russian Twist KB', '10 Chest Supported Row', '10 DB Floor Press',
+]
+
+METCON_PROPOSITO = [
+ ('Row — Pace + Técnica',  ['5 x 400m @pace 2k', '· 90" descanso',
+                            'SPM objetivo: 26-28', '· Foco: drive de piernas',
+                            '*Registrar pace c/400m']),
+ ('Bike + Run — Threshold:',['4 x 1\' Bike @95% pace', '· 1\' descanso activo', '---',
+                            '4 x 200m Run @90% pace', '· 90" descanso',
+                            '*Registrar watts + pace']),
+ ('Row — VO2max:',          ['6 x 250m @máximo pace', '· 1:30 descanso',
+                            '*Registrar tiempo c/250m',
+                            '*Objetivo: mantener pace constante']),
+ ('Run — Pace Work:',       ['6 x 200m @90-95% pace', '· 90" descanso',
+                            '*Foco: mantener el mismo pace',
+                            '*Registrar tiempo c/200m']),
+]
+
+# La lista plana de notas se fue entera a notas.py, donde cada nota depende
+# del levantamiento, del porcentaje de la semana y del mes del ciclo. De paso
+# se cayó "*Foco: velocidad de barra", que yo había inventado: no aparece en
+# ninguno de sus 60 bloques.
+
+
+_PCT_RE = re.compile(r'@\s*(\d+)')
+
+
+def _piso_de(rotulo, por_defecto=70):
+    """El número más bajo de un rótulo tipo '@80-85%' o '@75%'.
+
+    Solo lee lo que viene detrás de un '@'. Buscar cualquier dígito hacía que
+    'TEST 1RM' devolviera 1, y un complejo al 1% no lo caza nadie leyendo la
+    planilla. Hoy la semana de test se resuelve antes de llegar acá, así que
+    era un error que no se veía — de los que aparecen recién cuando alguien
+    mueve otra cosa.
+    """
+    m = _PCT_RE.search(rotulo or '')
+    return int(m.group(1)) if m else por_defecto
+
+
+def sets_para(minutos):
+    """Sus sets: 20'→5, 17'→4, 12'→3. Es minutos entre cuatro."""
+    return max(3, min(5, round(minutos / 4)))
+
+
+def escribir_bloque(rnd, categoria, minutos, semana_del_mes, mes_del_ciclo,
+                    usados=(), cap_del_wod=None, dias_de_test=0):
+    """Devuelve (texto, levantamientos), con la fase del mes ya aplicada.
+
+    `dias_de_test` son los días de test ya usados esta semana: el mes 2 hace
+    UNO y el mes 4 hace dos, así que no alcanza con mirar la semana.
+
+    LOS LEVANTAMIENTOS SE DECLARAN, no se adivinan del texto. Antes el que
+    llamaba los recuperaba cortando la primera palabra de la primera línea, y
+    eso convertía 'Back Squat 5x5 @75%' en 'Back'. Como después se comparaba
+    contra la lista de levantamientos —donde dice 'Back Squat'— la comparación
+    nunca calzaba y la regla de no repetir levantamiento en la semana no
+    funcionó nunca. Un complejo, además, son dos levantamientos y de ahí salía
+    uno solo y mal cortado.
+
+    La lista va vacía en GYMNASTICS, METCON y ACCESSORY: ahí el bloque es
+    trabajo de calidad y él no lo cuenta como carga de la semana.
+    """
+    test = TEST_DEL_MES.get(mes_del_ciclo, 'ninguno')
+    escalera = PCT_POR_MES.get(mes_del_ciclo, PCT_POR_MES[3])
+    pct = (ROTULO_S4[test] if semana_del_mes == 4 and test != 'ninguno'
+           else escalera[semana_del_mes])
+    hay_test_en_s4 = test != 'ninguno'
+
+    if categoria == 'STRENGTH':
+        cupo_de_test = {'completo': 2, 'parcial': 1, 'ninguno': 0}[test]
+        if semana_del_mes == 4 and dias_de_test < cupo_de_test:
+            lista = (LEVANTAMIENTOS_DE_TEST_MES1 if mes_del_ciclo == 1
+                     else LEVANTAMIENTOS_DE_TEST)
+            lev = rnd.choice([l for l in lista if l not in usados] or lista)
+            return (f'{lev.upper()} — Buscar 1RM:\n'
+                     '60%x5 → 72%x3 → 82%x2\n'
+                     '→ 90%x1 → 95%x1 → 1RM\n'
+                     + '\n'.join(notas_de_test(lev))), [lev]
+        if semana_del_mes == 4:
+            # Semana 4 sin cupo de test: single pesado, como su mes 3.
+            lev = rnd.choice([l for l in LEVANTAMIENTOS if l not in usados] or LEVANTAMIENTOS)
+            sets, nota = nota_single_pesado(cap_del_wod or 16)
+            esquema = '3-2-1-1-1' if sets >= 5 else '3-2-2-1-1'
+            return f'{lev} {esquema}\n(Buscar pesado del día)\n{nota}', [lev]
+        if rnd.random() < 0.3:
+            # El complejo también respeta lo ya cargado en la semana. Se
+            # elegía con un choice pelado, así que "Power Clean + Split Jerk"
+            # caía el miércoles aunque el lunes ya hubiera hecho Power Clean:
+            # era el 2% de semanas con levantamiento repetido que quedaba
+            # después de arreglar el recorte del nombre.
+            libres = [x for x in COMPLEJOS
+                      if not any(p.strip() in usados for p in x.split('+'))]
+            c = rnd.choice(libres or COMPLEJOS)
+            # La rampa del complejo arranca en el piso de la semana. Estaba
+            # fija en 70/75/80 mirando solo la semana del mes, así que en el
+            # mes 4 —que va @88-92%— el complejo salía quince puntos abajo y
+            # en el mes 1 no seguía la escalera nueva. El porcentaje es del
+            # mes, no de la semana: eso ya estaba escrito arriba y esta rama
+            # era la única que no lo respetaba.
+            base = _piso_de(escalera[semana_del_mes])
+            # Un complejo son DOS levantamientos ("Power Clean + Split Jerk")
+            # y los dos cuentan como cargados en la semana.
+            return (f'{c}\n2+1 x 2 @{base}%\n2+1 x 2 @{base+6}%\n'
+                    f'1+1 x 3 @{base+12}%+'), [x.strip() for x in c.split('+')]
+        lev = rnd.choice([l for l in LEVANTAMIENTOS if l not in usados] or LEVANTAMIENTOS)
+        series = {1: '5x5', 2: '5x4', 3: '4x3'}[semana_del_mes]
+        notas = notas_de_fuerza(lev, semana_del_mes, mes_del_ciclo, hay_test_en_s4)
+        return (f'{lev} {series} {pct}'
+                + ('\n' + '\n'.join(notas) if notas else '')), [lev]
+
+    if categoria == 'GYMNASTICS':
+        n = sets_para(minutos)
+        acompañantes = [p for p in PROGRESIONES if p != FOCO_DEL_CICLO]
+        rnd.shuffle(acompañantes)
+        elegidas = [FOCO_DEL_CICLO] + acompañantes[:rnd.choice([1, 2])]
+        lineas = [f'{n} sets x calidad:']
+        for p in elegidas:
+            lineas.append(f'PROG. {p}:')
+            lineas.append('· ' + PROGRESIONES[p][semana_del_mes - 1])
+        # Las progresiones son trabajo de calidad, no carga de la semana: él
+        # nunca las nombra en la línea "Evita". Se devuelven vacías a
+        # propósito, igual que los accesorios.
+        return '\n'.join(lineas), []
+
+    if categoria == 'METCON':
+        # La activación solo existe si hay algo que testear. En su mes 3, que
+        # no testea, el miércoles de la S12 es un Run — Pace Work normal.
+        if semana_del_mes == 4 and test == 'completo':
+            return ('Activación pre-test semana:\n'
+                    "10' Row @60% pace suave\n5' Bike @60% pace suave\n"
+                    '*No fatigar — activar CNS\n*Hidratación + movilidad'), []
+        titulo, cuerpo = METCON_PROPOSITO[(semana_del_mes - 1) % len(METCON_PROPOSITO)]
+        return titulo + '\n' + '\n'.join(cuerpo), []
+
+    # ACCESSORY: siempre cinco movimientos
+    n = sets_para(minutos)
+    movs = rnd.sample(ACCESORIOS, 5)
+    return f'{n} sets x calidad:\n' + '\n'.join('· ' + m for m in movs), []
