@@ -182,6 +182,31 @@ def _piso_de(rotulo, por_defecto=70):
     return int(m.group(1)) if m else por_defecto
 
 
+# Tipos de bloque que NO se pueden combinar sobre el mismo levantamiento,
+# aunque sean estímulos distintos. Buscar un 1RM de Deadlift el miércoles y
+# singles pesados de Deadlift el viernes es la misma barra al máximo dos veces
+# en la semana, y su regla es la contraria: "se puede pero ideal que no pase
+# tan seguido dos días que tengan mucho peso". Salía en 3 de los 5 casos que
+# permitía la regla nueva.
+INCOMPATIBLES = {frozenset({'test', 'pesado'})}
+
+
+def _libres(lista, usados, tipo):
+    """Los de `lista` que no se usaron esta semana con un tipo que choque.
+
+    `usados` son pares (levantamiento, tipo). Repetir el levantamiento se
+    permite si el tipo de bloque cambia — decisión suya del 23 de septiembre:
+    "mismo levantamiento, distinto estímulo". Lo que no se permite es repetir
+    con el MISMO tipo, ni cruzar dos tipos de INCOMPATIBLES.
+
+    Si no queda ninguno libre se devuelve la lista entera, porque es peor no
+    generar que romper la preferencia.
+    """
+    ya = {l for l, t in usados
+          if t == tipo or frozenset({t, tipo}) in INCOMPATIBLES}
+    return [l for l in lista if l not in ya] or list(lista)
+
+
 def sets_para(minutos):
     """Sus sets: 20'→5, 17'→4, 12'→3. Es minutos entre cuatro."""
     return max(3, min(5, round(minutos / 4)))
@@ -189,10 +214,18 @@ def sets_para(minutos):
 
 def escribir_bloque(rnd, categoria, minutos, semana_del_mes, mes_del_ciclo,
                     usados=(), cap_del_wod=None, dias_de_test=0):
-    """Devuelve (texto, levantamientos), con la fase del mes ya aplicada.
+    """Devuelve (texto, levantamientos, tipo), con la fase del mes aplicada.
 
     `dias_de_test` son los días de test ya usados esta semana: el mes 2 hace
     UNO y el mes 4 hace dos, así que no alcanza con mirar la semana.
+
+    Devuelve también el TIPO de bloque ('series', 'complejo', 'test',
+    'pesado' o None). Lo necesita `usados`: la regla de no repetir
+    levantamiento en la semana admite la excepción de que el estímulo sea
+    distinto, y el estímulo lo da el tipo, no el esquema de series —
+    `series` depende de la SEMANA del mes, así que los dos días de fuerza de
+    una misma semana siempre llevan el mismo. Con el tipo, Power Clean 5x5 el
+    lunes y "Power Clean + Split Jerk" el jueves sí se permiten.
 
     LOS LEVANTAMIENTOS SE DECLARAN, no se adivinan del texto. Antes el que
     llamaba los recuperaba cortando la primera palabra de la primera línea, y
@@ -216,25 +249,27 @@ def escribir_bloque(rnd, categoria, minutos, semana_del_mes, mes_del_ciclo,
         if semana_del_mes == 4 and dias_de_test < cupo_de_test:
             lista = (LEVANTAMIENTOS_DE_TEST_MES1 if mes_del_ciclo == 1
                      else LEVANTAMIENTOS_DE_TEST)
-            lev = rnd.choice([l for l in lista if l not in usados] or lista)
+            lev = rnd.choice(_libres(lista, usados, 'test'))
             return (f'{lev.upper()} — Buscar 1RM:\n'
                      '60%x5 → 72%x3 → 82%x2\n'
                      '→ 90%x1 → 95%x1 → 1RM\n'
-                     + '\n'.join(notas_de_test(lev))), [lev]
+                     + '\n'.join(notas_de_test(lev))), [lev], 'test'
         if semana_del_mes == 4:
             # Semana 4 sin cupo de test: single pesado, como su mes 3.
-            lev = rnd.choice([l for l in LEVANTAMIENTOS if l not in usados] or LEVANTAMIENTOS)
+            lev = rnd.choice(_libres(LEVANTAMIENTOS, usados, 'pesado'))
             sets, nota = nota_single_pesado(cap_del_wod or 16)
             esquema = '3-2-1-1-1' if sets >= 5 else '3-2-2-1-1'
-            return f'{lev} {esquema}\n(Buscar pesado del día)\n{nota}', [lev]
+            return (f'{lev} {esquema}\n(Buscar pesado del día)\n{nota}',
+                    [lev], 'pesado')
         if rnd.random() < 0.3:
             # El complejo también respeta lo ya cargado en la semana. Se
             # elegía con un choice pelado, así que "Power Clean + Split Jerk"
             # caía el miércoles aunque el lunes ya hubiera hecho Power Clean:
             # era el 2% de semanas con levantamiento repetido que quedaba
             # después de arreglar el recorte del nombre.
+            ya = {l for l, tp in usados if tp == 'complejo'}
             libres = [x for x in COMPLEJOS
-                      if not any(p.strip() in usados for p in x.split('+'))]
+                      if not any(p.strip() in ya for p in x.split('+'))]
             c = rnd.choice(libres or COMPLEJOS)
             # La rampa del complejo arranca en el piso de la semana. Estaba
             # fija en 70/75/80 mirando solo la semana del mes, así que en el
@@ -246,12 +281,12 @@ def escribir_bloque(rnd, categoria, minutos, semana_del_mes, mes_del_ciclo,
             # Un complejo son DOS levantamientos ("Power Clean + Split Jerk")
             # y los dos cuentan como cargados en la semana.
             return (f'{c}\n2+1 x 2 @{base}%\n2+1 x 2 @{base+6}%\n'
-                    f'1+1 x 3 @{base+12}%+'), [x.strip() for x in c.split('+')]
-        lev = rnd.choice([l for l in LEVANTAMIENTOS if l not in usados] or LEVANTAMIENTOS)
+                    f'1+1 x 3 @{base+12}%+'), [x.strip() for x in c.split('+')], 'complejo'
+        lev = rnd.choice(_libres(LEVANTAMIENTOS, usados, 'series'))
         series = {1: '5x5', 2: '5x4', 3: '4x3'}[semana_del_mes]
         notas = notas_de_fuerza(lev, semana_del_mes, mes_del_ciclo, hay_test_en_s4)
         return (f'{lev} {series} {pct}'
-                + ('\n' + '\n'.join(notas) if notas else '')), [lev]
+                + ('\n' + '\n'.join(notas) if notas else '')), [lev], 'series'
 
     if categoria == 'GYMNASTICS':
         n = sets_para(minutos)
@@ -265,7 +300,7 @@ def escribir_bloque(rnd, categoria, minutos, semana_del_mes, mes_del_ciclo,
         # Las progresiones son trabajo de calidad, no carga de la semana: él
         # nunca las nombra en la línea "Evita". Se devuelven vacías a
         # propósito, igual que los accesorios.
-        return '\n'.join(lineas), []
+        return '\n'.join(lineas), [], None
 
     if categoria == 'METCON':
         # La activación solo existe si hay algo que testear. En su mes 3, que
@@ -273,11 +308,11 @@ def escribir_bloque(rnd, categoria, minutos, semana_del_mes, mes_del_ciclo,
         if semana_del_mes == 4 and test == 'completo':
             return ('Activación pre-test semana:\n'
                     "10' Row @60% pace suave\n5' Bike @60% pace suave\n"
-                    '*No fatigar — activar CNS\n*Hidratación + movilidad'), []
+                    '*No fatigar — activar CNS\n*Hidratación + movilidad'), [], None
         titulo, cuerpo = METCON_PROPOSITO[(semana_del_mes - 1) % len(METCON_PROPOSITO)]
-        return titulo + '\n' + '\n'.join(cuerpo), []
+        return titulo + '\n' + '\n'.join(cuerpo), [], None
 
     # ACCESSORY: siempre cinco movimientos
     n = sets_para(minutos)
     movs = rnd.sample(ACCESORIOS, 5)
-    return f'{n} sets x calidad:\n' + '\n'.join('· ' + m for m in movs), []
+    return f'{n} sets x calidad:\n' + '\n'.join('· ' + m for m in movs), [], None

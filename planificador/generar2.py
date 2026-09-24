@@ -17,7 +17,7 @@ import random, openpyxl
 from collections import Counter, defaultdict
 from leer_wod import leer
 from familias import familia_de
-from prescribir import PESOS, DIST
+from prescribir import PESOS, DIST, ES_DISTANCIA
 from septiembre import MES
 
 # --- Techo mensual por movimiento ---------------------------------------
@@ -55,6 +55,32 @@ for _c in (_cuenta_mes(_mes2.MES), _cuenta_mes(_mes3.MES), _cuenta_mes(MES)):
 for _m in list(TECHO_MENSUAL):
     TECHO_MENSUAL[_m] += 1
 TECHO_POR_DEFECTO = 2      # nunca visto en sus planillas: se usa con cuidado
+
+# El techo MEDIDO se guarda aparte antes de que nadie lo toque a mano. No es
+# un duplicado por si acaso: `ALTA_DESTREZA` se define más abajo como "los
+# gimnásticos con techo bajo", y si esa definición leyera el techo ya
+# retocado, subirle el cupo a un movimiento lo sacaría del grupo de alta
+# destreza y le quitaría la separación mínima sin que nadie lo pida. Pasó con
+# el Bar Muscle-up: al subirlo a 4 perdió sus 4 días de separación.
+TECHO_MEDIDO = Counter(TECHO_MENSUAL)
+
+# Techos que él fijó a mano, por encima de lo medido.
+#
+# Bar Muscle-up a 4 (decisión suya, 23 de septiembre). Va en dirección
+# contraria a su queja original —"se repite mucho 5 BMU varios días"— y se lo
+# dije. Lo que cambió en el medio es la separación mínima: con 4 días entre
+# apariciones, cuatro veces en el mes quedan repartidas en vez de amontonadas,
+# y el Bar Muscle-up es el foco gimnástico del ciclo (FOCO_DEL_CICLO en
+# bloque.py), así que practicarlo más seguido es coherente con eso.
+#
+# Su máximo observado es 2, o sea que esto es el doble de lo que él programó
+# en tres meses. Queda acá arriba y separado justamente para que se vea.
+#
+# Asignación directa, NO `.update()`: esto es un Counter y ahí update SUMA en
+# vez de reemplazar. El techo del Bar Muscle-up quedó en 7 la primera vez.
+TECHO_A_MANO = {'Bar Muscle-up': 4}
+for _m, _n in TECHO_A_MANO.items():
+    TECHO_MENSUAL[_m] = _n
 
 # Y un techo SEMANAL, que es lo que impide que el cupo del mes se gaste en las
 # primeras dos semanas. Sin él, la semana 4 se quedaba sin combinación 8 veces
@@ -227,10 +253,15 @@ SEPARACION_DESTREZA = 4   # elegido
 #                          volumen. Ponerle 4 días de separación al T2B
 #                          contradice su propia planilla: sus huecos medidos
 #                          son 2-2-2-2-3-3-4-4-4-8-12.
+#
+# Lee `TECHO_MEDIDO`, no `TECHO_MENSUAL`: lo que hace difícil a un movimiento
+# es cuántas veces lo programó ÉL, no el cupo que le demos después. Leyendo el
+# techo retocado, subirle el cupo al Bar Muscle-up lo sacaba de este grupo y
+# le quitaba la separación de 4 días — justo lo contrario de lo que se pidió.
 from escalas import ESCALAS
 ALTA_DESTREZA = {m for m in POOL
                  if CATEG.get(m) == 'Gimnasia' and m in ESCALAS
-                 and TECHO_MENSUAL.get(m, TECHO_POR_DEFECTO) <= 3}
+                 and TECHO_MEDIDO.get(m, TECHO_POR_DEFECTO) <= 3}
 
 # El Burpee ya tenía separación propia, escrita a mano adentro de `proponer` y
 # con otra convención de conteo. Dos mecanismos para lo mismo es lo que después
@@ -358,7 +389,7 @@ def arma_wod(rnd, categoria, prohibidos, cuantos_total, cap=None,
         # tan apretado que un mes tarda minutos en salir.
         candidatos = [m for m in POOL if m in acepta and cabe(m)]
         rnd.shuffle(candidatos)
-        candidatos.sort(key=lambda m: m not in DIST)
+        candidatos.sort(key=lambda m: m not in ES_DISTANCIA)
         if not candidatos: return None
         poner(candidatos[0])
 

@@ -88,15 +88,16 @@ def generar_semana(mes_del_ciclo, semana_del_mes, semilla=None,
             if dom_final == d['dom']:
                 break
         skill_min = 20 if cap < 14 else (17 if cap <= 19 else 12)
-        txt_bloque, levs = escribir_bloque(
+        txt_bloque, levs, tipo_bloque = escribir_bloque(
             rnd, d['cat'], skill_min, semana_del_mes, mes_del_ciclo, usados,
             cap_del_wod=cap, dias_de_test=dias_de_test)
         if 'Buscar 1RM' in txt_bloque:
             dias_de_test += 1
-        # `usados` guarda los nombres tal cual, que es como los pide
-        # `escribir_bloque` para excluirlos. Antes guardaba la primera palabra
-        # del texto ('Back' por 'Back Squat') y la exclusión no calzaba nunca.
-        usados += levs
+        # `usados` guarda pares (levantamiento, tipo de bloque). El tipo está
+        # porque él pidió permitir el mismo levantamiento dos veces en la
+        # semana SI cambia el estímulo: Power Clean 5x5 el lunes y
+        # "Power Clean + Split Jerk" el jueves sí, dos bloques normales no.
+        usados += [(l, tipo_bloque) for l in levs]
         # El dominio se lee del cap FINAL, no del que se pidió al planificar.
         # Si el techo de volumen impidió llegar a los 20 minutos, el día es
         # glucolítico aunque se hubiera pedido aeróbico — y decir otra cosa
