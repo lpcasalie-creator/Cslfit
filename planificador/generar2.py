@@ -473,9 +473,49 @@ def proponer(intentos=6000, semilla=None, previas=None, composicion=None):
             # Y lo que volvería demasiado pronto. El techo mensual limita
             # cuántas veces; esto, cada cuánto.
             prohibidos |= {m for m in POOL if muy_pronto(m, previas, semana)}
+            # Y la gimnasia dura no vuelve al MISMO día de la semana en el mes.
+            #
+            # Lo pescó él mirando un octubre generado: "los primeros dos lunes
+            # tienen Wall Walk". Al medirlo, es la única categoría donde el
+            # generador se pasaba de lo que él hace:
+            #
+            #   repeticiones de día de la semana, por mes
+            #                     él    generador
+            #     alta destreza  0,0       0,8      ← acá
+            #     barra          0,7       0,2
+            #     resto          6,0       4,0
+            #     relleno        4,3       5,9
+            #
+            # En 72 días no hay UN solo gimnástico de alta destreza que caiga
+            # dos veces en el mismo día. El relleno y el volumen sí repiten
+            # casillero —y él más que la máquina— así que la regla es solo
+            # para este grupo: un Run los jueves no se nota, un Wall Walk los
+            # lunes se vuelve "los lunes toca Wall Walk".
+            # Solo contra la SEMANA ANTERIOR, que es la versión que él
+            # eligió de las tres medidas:
+            #
+            #                        repite día  seguidas  hallazgos/mes
+            #   sin regla                0,80      0,60        0,23
+            #   solo semanas seguidas    0,42      0,00        0,33   ← ésta
+            #   mes entero               0,00      0,00        0,47
+            #   él, en sus 3 meses       0,00      0,00          —
+            #
+            # Lo que sube es "dominios consecutivos": al sacarle tres
+            # movimientos de gimnasia al surtido, algunos días no llegan a la
+            # duración pedida y caen al dominio de al lado. Probé dejarlo como
+            # preferencia blanda con segunda pasada y no cambió nada — el
+            # generador casi nunca se queda sin con qué armar el día, solo
+            # elige otra cosa. El costo viene de achicar el surtido, no de la
+            # dureza de la regla.
+            laborales_previas = [d for d in previas if d['cat'] != 'PARTNER']
+            semana_actual = len(laborales_previas) // 5
+            blandos = {m for j, d in enumerate(laborales_previas)
+                       if d['dia'] == dia and j // 5 == semana_actual - 1
+                       for m in d['movs']} & ALTA_DESTREZA
             if box >= 2: prohibidos |= {m for m in POOL if 'Box Jump' in m}
             cuantos = rnd.choice(CUANTOS_MOVS[doms[i]])
-            movs = arma_wod(rnd, plan[dia], prohibidos, cuantos, cap=cap,
+            movs = arma_wod(rnd, plan[dia], prohibidos | blandos, cuantos,
+                            cap=cap,
                             exigir_distancia=(doms[i] != 'fosfágeno'),
                             dominio=doms[i])
             if not movs: ok = False; break
