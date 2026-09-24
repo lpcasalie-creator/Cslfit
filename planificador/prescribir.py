@@ -27,7 +27,13 @@ MES = MESES          # el resto del archivo ya recorre MES
 
 # --- Aprender de su historia --------------------------------------------
 REPS  = defaultdict(list)      # reps por ronda en formatos multironda
-DIST  = defaultdict(list)
+DIST  = defaultdict(list)      # METROS, solamente
+# Calorías, aparte. `leer_reps` siempre devolvió la unidad y este archivo la
+# tiraba: guardaba "14 Cal Bike" como un 14 suelto en DIST, junto a los 500 y
+# 1000 metros de la tabla de abajo. Hoy no se nota porque la distancia se elige
+# siempre como la opción más grande que quepa, así que un 14 nunca gana — pero
+# es un 14 metros esperando a que algo cambie.
+CAL   = defaultdict(list)
 PESOS = {}
 
 PESO_RE = re.compile(r'\((\d+)\s*/\s*(\d+)\s*(lb|kg)\)', re.I)
@@ -39,7 +45,8 @@ for s, f, fa, jornadas, sab in MES:
         # El chipper y el partner son de una ronda: sus reps no son comparables
         multironda = (r['rondas'] or 0) > 1 or r['formato'] in ('AMRAP','EMOM')
         for m, d in r['movimientos'].items():
-            if d['tipo'] == 'distancia': DIST[m].append(d['valor'])
+            if d['tipo'] == 'distancia':
+                (CAL if d.get('unidad') == 'cal' else DIST)[m].append(d['valor'])
             elif d['por_ronda'] and multironda: REPS[m].append(d['por_ronda'])
     for texto in [t for *_, t in [(0, sab)]]:
         pass
@@ -161,8 +168,10 @@ def peso_de(mov):
     return f'{h}/{m} {u}'
 
 def linea_de(rnd, mov, factor=1.0, emom=False):
-    if mov in DIST:
-        opciones = sorted(set(DIST[mov]))
+    if mov in SOLO_CALORIAS:
+        return f'· {rnd.choice(sorted(set(CAL[mov])))} cal {mov}'
+    if mov in ES_DISTANCIA:
+        opciones = metros_de(mov)      # medidas + tabla, no solo las medidas
         # En un EMOM el trabajo tiene que caber en el minuto: 500m de remo son
         # casi dos. Sus EMOM reales solo usan 200m Run.
         if emom: opciones = [d for d in opciones if d <= 200] or [min(opciones)]
@@ -174,8 +183,11 @@ def linea_de(rnd, mov, factor=1.0, emom=False):
 
 def cabe_en_un_minuto(mov):
     """En un EMOM el trabajo tiene que terminarse dentro del minuto."""
-    if mov not in DIST: return True
-    return min(DIST[mov]) <= 200
+    if mov not in ES_DISTANCIA: return True
+    opciones = metros_de(mov)
+    # `DIST` sola reventaba acá: el Bike es distancia por la tabla escrita a
+    # mano, no por lo medido, así que su lista medida está vacía.
+    return bool(opciones) and min(opciones) <= 200
 
 # El hueco de 12-13' NO es casualidad: en 60 días de los tres meses no hay un
 # solo cap ahí. Su leyenda del mes 2 lo dice escrito — "Corto <12' · Medio
@@ -198,6 +210,30 @@ DISTANCIAS = {'Row': [250, 500, 750, 1000, 1500, 2000],
               'Bike': [500, 1000, 1500, 2000],
               'Farmer Carry': [100, 200, 400]}
 
+# Lo que se mide por DISTANCIA. No alcanza con `DIST`, que es solo lo medido
+# en sus planillas: el Bike aparece ahí únicamente como "12 Cal Bike" y "14 Cal
+# Bike", así que al separar calorías de metros su clave desapareció de DIST y
+# el generador dejó de tratarlo como distancia — pasó a escribir "10 Bike" en
+# vez de "1000m Bike", y los días aeróbicos se quedaron sin con qué estirarse.
+# Los metros del Bike viven en DISTANCIAS, escritos a mano, y hay que mirarlos.
+ES_DISTANCIA = set(DIST) | set(DISTANCIAS)
+
+
+def metros_de(mov):
+    """Las distancias posibles de ese movimiento, medidas y de tabla."""
+    return sorted(set(DISTANCIAS.get(mov, [])) | set(DIST.get(mov, [])))
+
+
+# Movimientos que él mide SOLO en calorías: tienen dato en calorías y ninguno
+# en metros, ni medido ni en la tabla de acá arriba. Hoy es el Machine.
+#
+# Importa para dos cosas. Una, el número: el Machine se quedaba sin dato
+# porque "15/10 Cal Machine" no se parseaba, y salía un "10" de respaldo en
+# 10 de cada 240 días. Dos, la palabra: "10 Machine" no dice qué son esos
+# diez. Su planilla siempre escribe "Cal".
+SOLO_CALORIAS = {m for m in CAL if not DIST.get(m) and m not in DISTANCIAS}
+
+
 def _distancia_redonda(mov, metros):
     """La distancia más cercana de las que él usa, sin pasarse del objetivo."""
     opciones = sorted(set(DISTANCIAS.get(mov, []) + list(DIST.get(mov, []))))
@@ -212,7 +248,7 @@ def ajustar_a_dominio(dominio, movs, reps, rnd):
     el movimiento difícil, y así salían cuarenta Bar Muscle-up.
     """
     lo, hi = RANGO[dominio]
-    de_distancia = [m for m in movs if m in DIST]
+    de_distancia = [m for m in movs if m in ES_DISTANCIA]
     opciones = []
     for n in RONDAS_POSIBLES:
         combos = [[]] if not de_distancia else [
@@ -237,7 +273,7 @@ def ajustar_a_dominio(dominio, movs, reps, rnd):
                     # y dividido en cinco rondas daba 2. Un techo sacado de una
                     # observación no puede mandar sobre el rango real.
                     piso = min(REPS.get(m) or [r[m]])
-                    if m not in DIST:
+                    if m not in ES_DISTANCIA:
                         r[m] = max(piso, techo // n)
                     else:
                         # Una distancia se redondea a lo que él escribiría. El
@@ -298,7 +334,8 @@ def escribir(rnd, dia, evitar=()):
     # 1. Reps de cada movimiento, de sus rangos históricos
     reps = {}
     for m in movs:
-        reps[m] = (rnd.choice(sorted(set(DIST[m]))) if m in DIST
+        reps[m] = (rnd.choice(sorted(set(CAL[m]))) if m in SOLO_CALORIAS
+                   else rnd.choice(metros_de(m)) if m in ES_DISTANCIA
                    else (reps_de(rnd, m) or 10))
 
     # 2. Cuántas rondas hacen que el WOD dure lo que el dominio pide
@@ -327,7 +364,7 @@ def escribir(rnd, dia, evitar=()):
         mejor, mejor_d = None, 1e9
         f = 1.0
         while f <= 8.0:
-            r = {m: (reps[m] * (f if m in DIST else 1)) if m in DIST
+            r = {m: (reps[m] * (f if m in ES_DISTANCIA else 1)) if m in ES_DISTANCIA
                     else (reps_de(rnd, m, factor=f) or reps[m])
                  for m in movs}
             r = {m: min(int(round(v)), TECHO_POR_VEZ.get(m, TECHO.get(m, int(round(v)))))
@@ -351,7 +388,9 @@ def escribir(rnd, dia, evitar=()):
         # ("21-15-9"), y repetirlo abajo como 45 se lee como si fueran 45 por
         # ronda. Es el error que tenía la primera versión.
         n = override if override is not None else reps[m]
-        if m in DIST:
+        if m in SOLO_CALORIAS:
+            return f'· {n} cal {m}'
+        if m in ES_DISTANCIA:
             d = n
             if emom and d > 200: d = 200
             return f'· {d}m {m}'
@@ -378,7 +417,7 @@ def escribir(rnd, dia, evitar=()):
     # día no le sirve —una escalera con Run adentro, una escalera de carga sin
     # barra, un AMRAP de 8'— y entonces sigue de largo al clásico de respaldo.
     if fmt_nuevo:
-        en_dist = lambda m: m in DIST
+        en_dist = lambda m: m in ES_DISTANCIA
         extra = None
         rango = RANGO[dom]
         hecho = None

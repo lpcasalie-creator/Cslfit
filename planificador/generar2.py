@@ -17,7 +17,7 @@ import random, openpyxl
 from collections import Counter, defaultdict
 from leer_wod import leer
 from familias import familia_de
-from prescribir import PESOS, DIST
+from prescribir import PESOS, DIST, ES_DISTANCIA
 from septiembre import MES
 
 # --- Techo mensual por movimiento ---------------------------------------
@@ -389,7 +389,7 @@ def arma_wod(rnd, categoria, prohibidos, cuantos_total, cap=None,
         # tan apretado que un mes tarda minutos en salir.
         candidatos = [m for m in POOL if m in acepta and cabe(m)]
         rnd.shuffle(candidatos)
-        candidatos.sort(key=lambda m: m not in DIST)
+        candidatos.sort(key=lambda m: m not in ES_DISTANCIA)
         if not candidatos: return None
         poner(candidatos[0])
 

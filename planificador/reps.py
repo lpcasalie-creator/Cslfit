@@ -17,9 +17,17 @@ def _movimiento(parte):
         if patron.search(p): return nombre
     return None
 
+# "15/10 Cal Machine" es hombre/mujer, no un Rx con su escala. El corte por "/"
+# que separa la escala lo partía en "15" y el movimiento se perdía entero: el
+# Machine quedó sin un solo dato en las tres planillas y el generador le ponía
+# un 10 pelado de respaldo. Se normaliza al número del hombre, que es la misma
+# convención que ya usa el lector de pesos.
+RX_DOBLE = re.compile(r'(\d+)\s*/\s*\d+(\s*(?:m|km|cal)\b)', re.I)
+
+
 def leer_reps(texto):
     """Devuelve {'rondas': n|None, 'esquema': [..]|None, 'movimientos': {nombre: {...}}}"""
-    lineas = texto.split('\n')
+    lineas = [RX_DOBLE.sub(r'\1\2', ln) for ln in texto.split('\n')]
     base = leer(texto)
 
     rondas = None
