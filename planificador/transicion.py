@@ -1,22 +1,24 @@
 # -*- coding: utf-8 -*-
-"""Semanas 16 a 20 en una planilla, para repartir a los coaches.
+"""Las semanas 16 a 20 con el formato exacto de su planilla.
 
-ESTE DOCUMENTO SE ENTREGA, NO SE REVISA
+CALCADA DE LA FOTO DE SU MES 3, no inventada. Lo que la define:
 
-La primera versión llevaba etiquetas "tu planilla" / "generada", una banda
-explicando el salto de porcentajes, una línea diciendo que los bloques de
-septiembre no están transcritos, y la semilla en el pie. Todo eso servía
-cuando el documento era para que Luis lo revisara. Un coach abre la planilla
-para saber qué dicta el martes, y cada una de esas marcas le dice "esto lo
-armó una máquina" — que fue exactamente su comentario.
+  · Es una TABLA densa, sin aire entre celdas. Se lee como planilla, no como
+    presentación. Bordes finos, todo pegado.
+  · Cada día abre con una FRANJA DEL COLOR DE SU CATEGORÍA que lleva el
+    nombre, el punto del dominio, el cap y el Skill en una sola línea:
+    "STRENGTH 🟢 6' | Skill: 20'".
+  · El bloque va suelto debajo, en gris, sin encabezado.
+  · El WOD lleva SU PROPIA BARRA: "WOD — FOR TIME (Cap 7')".
+  · LOS CUATRO SÁBADOS VAN JUNTOS AL FINAL, cada uno con su franja lima
+    "SÁBADO — SEMANA 9 | 9 Agosto", y cierra con una franja lima con
+    "Score: ... | Mejor dupla: ... | Evita: ...".
+  · El encabezado y el pie van con pipes:
+    "CrossTrain EIM — Mes 3 (Semanas 9–12) | Agosto 2026 | @luis_casali | CSL-Fit"
 
-Así que acá no hay nada que hable del documento. Solo la programación, con la
-leyenda de su planilla: las cuatro categorías, los tres dominios y la
-distribución objetivo 30/50/20 que dice el mes 2.
-
-Las notas que quedan son notas de COACH —cortas, imperativas, sin explicar el
-porqué— que es como él las escribe en los bloques: "*Descanso 2:00 entre
-sets", "Evita: ...".
+La versión anterior eran tarjetas con espacio entre medio y un sábado después
+de cada semana. Se veía, en sus palabras, "demasiado generada por IA" — y la
+mitad de eso era el layout, no el texto.
 
     python3 transicion.py [semilla]   ->  octubre-transicion.html
 """
@@ -25,60 +27,50 @@ import sys
 from datetime import date, timedelta
 
 from semana import generar_mes, PUNTO
-from bloque import PCT_POR_MES, TEST_DEL_MES, ROTULO_S4
-from planilla_html import COLOR_CAT, MESES_ES
 from septiembre import MES as SEPTIEMBRE
 
 PRIMER_LUNES_OCT = date(2026, 9, 29)
+DIAS = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES']
+MESES_ES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
+            'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
-# La nota de cada semana, en su voz: qué hacer, no por qué. La 17 es la que
-# más se puede malinterpretar —viene de la semana de test y baja fuerte— así
-# que es la única que lleva algo escrito.
-NOTA_SEMANA = {
-    17: 'Semana de descarga. Viene del test: no la subas.',
-    20: 'Un solo 1RM en la semana. El resto de los días, bloque normal.',
+# Los colores de las franjas, leídos de su planilla del mes 3.
+COLOR_CAT = {
+    'STRENGTH':   '#23409c',
+    'GYMNASTICS': '#7a2d9e',
+    'METCON':     '#0e7a63',
+    'ACCESSORY':  '#a32570',
 }
 
 CSS = """
-:root{
-  --negro:#0d0d0d; --panel:#141414; --panel2:#1b1b1b;
-  --lima:#CCFF00; --blanco:#fff; --gris:#bbb; --borde:#2a2a2a;
-}
 *{box-sizing:border-box}
-body{
-  margin:0; background:var(--negro); color:var(--blanco);
-  font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;
-  font-size:16px; line-height:1.45; padding:16px;
-}
-header{border-bottom:2px solid var(--lima); padding-bottom:12px; margin-bottom:8px}
-h1{font-size:28px; margin:0 0 4px; color:var(--lima); letter-spacing:1px; text-transform:uppercase}
-.sub{color:var(--gris); font-size:15px}
-.semana{
-  background:var(--lima); color:#000; font-weight:700; letter-spacing:1px;
-  padding:7px 12px; margin:26px 0 0; font-size:17px; text-transform:uppercase;
-  display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;
-}
-.semana .pct{font-weight:700}
-.nota{background:var(--panel2); border-left:3px solid var(--lima); color:var(--blanco);
-      padding:8px 12px; font-size:15px; margin-top:0}
-.dias{display:grid; grid-template-columns:1fr; gap:10px; margin-top:10px}
-@media(min-width:1000px){ .dias{grid-template-columns:repeat(5,1fr)} }
-.dia{background:var(--panel); border:1px solid var(--borde); border-top-width:3px; padding:10px}
-.cab{font-size:13px; letter-spacing:.5px; margin-bottom:8px}
-.cat{font-weight:700; text-transform:uppercase}
-.min{color:var(--gris)}
-.bloque{white-space:pre-wrap; font-size:14px; color:var(--gris); margin-bottom:10px}
-.wod{white-space:pre-wrap; font-size:15px; background:var(--panel2); padding:8px; border-left:2px solid var(--lima)}
-.sabado{background:var(--panel); border:1px solid var(--borde); border-left:3px solid var(--lima); padding:10px; margin-top:10px}
-.sabado .tit{color:var(--lima); font-weight:700; letter-spacing:1px; font-size:14px; margin-bottom:6px; text-transform:uppercase}
-.sabado pre{white-space:pre-wrap; margin:0; font-family:inherit; font-size:15px}
-.leyenda{margin-top:30px; padding:14px; background:var(--panel); border:1px solid var(--borde); font-size:14px; color:var(--gris)}
-.leyenda .cats{display:flex; gap:18px; flex-wrap:wrap; margin-bottom:10px}
-.leyenda .cats span{color:var(--blanco); font-weight:600; letter-spacing:.5px}
-.leyenda .sq{display:inline-block; width:11px; height:11px; margin-right:6px}
-.leyenda div{margin-bottom:3px}
-footer{margin-top:30px; padding-top:14px; border-top:1px solid var(--borde); color:var(--gris); font-size:13px}
-footer .cred{color:var(--lima)}
+body{margin:0; background:#1a1a1a; padding:14px;
+     font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;}
+table.p{width:100%; border-collapse:collapse; background:#0a0a0a; color:#fff;
+        table-layout:fixed; font-size:12.5px; line-height:1.3}
+td,th{border:1px solid #333; padding:0; vertical-align:top}
+.tit{background:#CCFF00; color:#000; text-align:center; font-weight:700;
+     font-size:15px; padding:5px; letter-spacing:.3px}
+.meta{background:#0a0a0a; color:#9a9a9a; text-align:center; font-size:11px;
+      padding:3px; letter-spacing:.2px}
+.dias th{background:#141433; color:#fff; text-align:center; font-weight:700;
+         font-size:13px; padding:4px; letter-spacing:1px}
+.sem{background:#CCFF00; color:#000; font-weight:700; font-size:13px;
+     padding:4px 8px; letter-spacing:.5px}
+.cab{color:#fff; font-weight:700; font-size:12px; padding:3px 6px;
+     letter-spacing:.3px; white-space:nowrap; overflow:hidden}
+.blo{padding:5px 6px; color:#c9c9c9; font-size:11.5px; white-space:pre-wrap}
+.wodbar{background:#1a1a3d; color:#fff; font-weight:700; font-size:12px;
+        padding:3px 6px; border-top:1px solid #333; border-bottom:1px solid #333}
+.wod{padding:5px 6px; color:#e8e8e8; font-size:11.5px; white-space:pre-wrap}
+.sabtit{background:#CCFF00; color:#000; font-weight:700; font-size:13px;
+        padding:4px 8px; letter-spacing:.5px}
+.sabcab{color:#fff; font-weight:700; font-size:12.5px; padding:4px 8px}
+.sabcuerpo{padding:2px 8px 5px; color:#e8e8e8; font-size:11.5px; white-space:pre-wrap}
+.score{background:#CCFF00; color:#000; font-weight:700; font-size:10.5px;
+       padding:2px 8px}
+.pie{background:#0a0a0a; color:#bbb; text-align:center; font-size:11px; padding:5px}
+.sq{display:inline-block; width:8px; height:8px; margin-right:4px}
 """
 
 
@@ -86,91 +78,106 @@ def rango(primer_lunes, n):
     lu = primer_lunes + timedelta(weeks=n - 1)
     sa = lu + timedelta(days=5)
     if lu.month == sa.month:
-        return f'{lu.day}–{sa.day} {MESES_ES[lu.month]}'
+        return f'{lu.day} – {sa.day} {MESES_ES[lu.month]}'
     return f'{lu.day} {MESES_ES[lu.month]} – {sa.day} {MESES_ES[sa.month]}'
 
 
-def _dia(cab_dia, cat, cap, skill, bloque, wod, punto):
-    col = COLOR_CAT.get(cat, '#666')
+def _parte_wod(texto):
+    """Su planilla separa la barra del WOD de su cuerpo. La barra es la
+    primera línea; el generador ya la escribe con 'WOD — ' adelante y
+    septiembre no, así que se normaliza acá."""
+    lineas = texto.split('\n')
+    barra = lineas[0].strip()
+    if not barra.upper().startswith('WOD'):
+        barra = f'WOD — {barra}'
+    return barra, '\n'.join(lineas[1:])
+
+
+def _celda(cat, cap, skill, bloque, wod, punto):
     e = html.escape
-    out = [f'<div class="dia" style="border-top-color:{col}">',
-           f'<div class="cab"><span class="cat" style="color:{col}">{e(cab_dia)} · {e(cat)}</span><br>'
-           f'<span class="min">{punto} {cap}\' · Skill {skill}\'</span></div>']
-    # Sin bloque no se escribe nada. Septiembre está transcrito solo con los
-    # WOD, y un cartel diciéndolo es información sobre el archivo, no sobre el
-    # entrenamiento: al coach no le sirve y delata la herramienta.
+    col = COLOR_CAT.get(cat, '#444')
+    barra, cuerpo = _parte_wod(wod)
+    sk = f" | Skill: {skill}'" if skill else ''
+    o = [f'<td><div class="cab" style="background:{col}">'
+         f"{e(cat)} {punto} {cap}'{e(sk)}</div>"]
     if bloque:
-        out.append(f'<div class="bloque">{e(bloque)}</div>')
-    out.append(f'<div class="wod">{e(wod)}</div></div>')
-    return ''.join(out)
+        o.append(f'<div class="blo">{e(bloque)}</div>')
+    o.append(f'<div class="wodbar">{e(barra)}</div>')
+    o.append(f'<div class="wod">{e(cuerpo)}</div></td>')
+    return ''.join(o)
 
 
-def _banda(numero, fechas, pct, nota):
+def _sabado(titulo, texto):
+    """El sábado de su planilla: franja lima con el título, el encabezado del
+    partner, el cuerpo, y la línea de Score/Evita en otra franja lima."""
     e = html.escape
-    o = [f'<div class="semana"><span>Semana {numero} · {e(fechas)}</span>'
-         f'<span class="pct">{e(pct)}</span></div>']
-    if nota:
-        o.append(f'<div class="nota">{e(nota)}</div>')
+    lineas = [l for l in texto.split('\n') if l.strip()]
+    cab = lineas[0]
+    score = ''
+    cuerpo = lineas[1:]
+    if cuerpo and cuerpo[-1].lower().startswith('score'):
+        score = cuerpo[-1]
+        cuerpo = cuerpo[:-1]
+    o = [f'<tr><td colspan="5" class="sabtit">{e(titulo)}</td></tr>',
+         f'<tr><td colspan="5"><div class="sabcab">{e(cab)}</div>'
+         f'<div class="sabcuerpo">{e(chr(10).join(cuerpo))}</div>']
+    if score:
+        o.append(f'<div class="score">{e(score)}</div>')
+    o.append('</td></tr>')
     return ''.join(o)
 
 
 def render(semanas):
     e = html.escape
     s16 = SEPTIEMBRE[-1]
-    escalera = PCT_POR_MES[1]
-    test1 = TEST_DEL_MES.get(1, 'ninguno')
 
     o = ['<!doctype html><html lang="es"><head><meta charset="utf-8">',
          '<meta name="viewport" content="width=device-width,initial-scale=1">',
-         '<title>CrossTrain EIM — Semanas 16 a 20</title>',
-         '<link rel="preconnect" href="https://fonts.googleapis.com">',
+         '<title>CrossTrain EIM — Semanas 16-20</title>',
          '<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&display=swap" rel="stylesheet">',
-         f'<style>{CSS}</style></head><body>',
-         '<header><h1>CrossTrain EIM — Semanas 16 a 20</h1>',
-         '<div class="sub">22 de septiembre al 25 de octubre · 2 STRENGTH · '
-         '1 GYMNASTICS · 1 METCON · 1 ACCESSORY por semana</div></header>']
+         f'<style>{CSS}</style></head><body><table class="p">',
+         '<tr><td colspan="5" class="tit">CrossTrain EIM — Semanas 16–20 '
+         '| Septiembre–Octubre 2026 | @luis_casali | CSL-Fit</td></tr>',
+         '<tr><td colspan="5" class="meta">2 STRENGTH · 1 GYMNASTICS · 1 METCON '
+         '· 1 ACCESSORY por semana | PROG. = Progresión | (Rx) = Rx | (Esc) = Escala</td></tr>',
+         '<tr class="dias">' + ''.join(f'<th>{d}</th>' for d in DIAS) + '</tr>']
 
-    o.append(_banda(s16[0], s16[1], s16[2], None))
-    o.append('<div class="dias">')
+    # Semana 16 — el cierre del Mes 4, de su planilla.
+    o.append(f'<tr><td colspan="5" class="sem">SEMANA {s16[0]} | '
+             f'{e(s16[1].replace("sept", "Septiembre"))}</td></tr>')
+    o.append('<tr>')
     for dia, cat, cap, skill, texto in s16[3]:
         dom = 'fosfágeno' if cap < 14 else ('glucolítico' if cap <= 19 else 'aeróbico')
-        o.append(_dia(dia, cat, cap, skill, None, texto, PUNTO[dom]))
-    o.append('</div>')
-    o.append('<div class="sabado"><div class="tit">Sábado · Partner · 35\'</div>'
-             f'<pre>{e(s16[4])}</pre></div>')
+        o.append(_celda(cat, cap, skill, None, texto, PUNTO[dom]))
+    o.append('</tr>')
 
+    # Semanas 17 a 20.
     for n, sem in enumerate(semanas, 1):
         numero = 16 + n
-        pct = ROTULO_S4[test1] if n == 4 and test1 != 'ninguno' else escalera[n]
-        o.append(_banda(numero, rango(PRIMER_LUNES_OCT, n), pct,
-                        NOTA_SEMANA.get(numero)))
-        o.append('<div class="dias">')
+        o.append(f'<tr><td colspan="5" class="sem">SEMANA {numero} | '
+                 f'{e(rango(PRIMER_LUNES_OCT, n))}</td></tr>')
+        o.append('<tr>')
         for d in sem['dias']:
-            o.append(_dia(d['dia'], d['cat'], d['cap'], d['skill'],
-                          d['bloque'], d['wod'], PUNTO[d['dom']]))
-        o.append('</div>')
-        o.append('<div class="sabado"><div class="tit">Sábado · Partner · 35\'</div>'
-                 f'<pre>{e(sem["sabado"])}</pre></div>')
+            o.append(_celda(d['cat'], d['cap'], d['skill'], d['bloque'],
+                            d['wod'], PUNTO[d['dom']]))
+        o.append('</tr>')
 
-    # La leyenda de SU planilla: las cuatro categorías con su cuadrado, los
-    # tres dominios y el 30/50/20 del mes 2. Nada más.
-    o.append('<div class="leyenda"><div class="cats">')
-    for cat in ('STRENGTH', 'GYMNASTICS', 'METCON', 'ACCESSORY'):
-        o.append(f'<span><i class="sq" style="background:{COLOR_CAT[cat]}"></i>{cat}</span>')
-    o.append('</div>')
-    for linea in ['🟢 Corto &lt;14\'   ·   🟡 Medio 14-19\'   ·   🔴 Largo 20\'+   ·   '
-                  'Distribución objetivo 30% / 50% / 20%',
-                  '(Esc) versión escalada — se elige por movimiento, no por alumno',
-                  '@% porcentaje del 1RM de la fase del mes',
-                  'relay uno trabaja, el otro descansa   ·   JUNTOS los dos a la vez',
-                  '* nota de coaching, no es trabajo extra']:
-        o.append(f'<div>{linea}</div>')
-    o.append('</div>')
+    # LOS SÁBADOS, TODOS JUNTOS AL FINAL. Así los ordena su planilla.
+    sab16 = SEPTIEMBRE[-1]
+    o.append(_sabado(f'SÁBADO — SEMANA {sab16[0]} | 27 Septiembre', sab16[4]))
+    for n, sem in enumerate(semanas, 1):
+        lu = PRIMER_LUNES_OCT + timedelta(weeks=n - 1)
+        sa = lu + timedelta(days=5)
+        o.append(_sabado(f'SÁBADO — SEMANA {16 + n} | {sa.day} {MESES_ES[sa.month]}',
+                         sem['sabado']))
 
-    o.append('<footer>CrossTrain EIM · Head Coach <span class="cred">Luis Casali</span> · '
-             '<span class="cred">@luis_casali</span><br>'
-             'CF-L3 · CCFT · USAW L1 · HYROX Official Coach · '
-             'Lead Coach Burgener Strength Latinoamérica</footer></body></html>')
+    cuadros = ''.join(
+        f'<i class="sq" style="background:{COLOR_CAT[c]}"></i>{c}&nbsp;&nbsp; '
+        for c in ('STRENGTH', 'GYMNASTICS', 'METCON', 'ACCESSORY'))
+    o.append(f'<tr><td colspan="5" class="pie">{cuadros}| PROG. = Progresión '
+             '| (Rx) = Rx | (Esc) = Escala | 🟢 Corto &lt;14\' · 🟡 Medio 14-19\' '
+             '· 🔴 Largo 20\'+ · Objetivo 30/50/20</td></tr>')
+    o.append('</table></body></html>')
     return '\n'.join(o)
 
 
