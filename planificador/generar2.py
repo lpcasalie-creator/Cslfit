@@ -340,6 +340,34 @@ RELLENO_DE_DIA = MONOSTRUCTURAL | {'Air Squat', 'Sit-up', 'Burpee'}
 NOTORIOS = {m for m in POOL if m not in RELLENO_DE_DIA}
 
 
+# Row, Bike, Ski y Run van al PRINCIPIO o al FINAL del WOD, nunca al medio.
+# Regla suya, y sus planillas ya la cumplían sin que estuviera escrita: de 28
+# WODs de tres o más movimientos con uno de estos cuatro, 24 lo tienen en un
+# extremo. Las cuatro excepciones son dos chippers, una escalera y un rounds.
+#
+# OJO con el conjunto: son esos cuatro y no MONOSTRUCTURAL entero. Contando
+# también Double under, Machine y Shuttle Run, las excepciones suben de 4 a 9
+# — o sea que a esos tres sí los pone al medio. Él dijo "row/bike/ski/run" y
+# la medición le da la razón.
+#
+# Al principio o al final da casi lo mismo: su reparto es 13 y 10.
+CARDIO_A_LOS_EXTREMOS = {'Run', 'Row', 'Bike', 'Ski'}
+
+
+def _a_los_extremos(rnd, movs):
+    if len(movs) < 3:
+        return movs
+    cardio = [m for m in movs if m in CARDIO_A_LOS_EXTREMOS]
+    if not cardio:
+        return movs
+    resto = [m for m in movs if m not in CARDIO_A_LOS_EXTREMOS]
+    if len(cardio) == 1:
+        return cardio + resto if rnd.random() < 0.55 else resto + cardio
+    # Dos o más: uno abre y el resto cierra, que es lo único que los deja a
+    # todos en un extremo.
+    return cardio[:1] + resto + cardio[1:]
+
+
 def arma_wod(rnd, categoria, prohibidos, cuantos_total, cap=None,
              exigir_distancia=False, dominio=None):
     """Un movimiento de la categoría del día, el resto peso corporal."""
@@ -405,7 +433,9 @@ def arma_wod(rnd, categoria, prohibidos, cuantos_total, cap=None,
     for m in relleno:
         if len(elegidos) >= cuantos_total: break
         if cabe(m): poner(m)
-    return elegidos if len(elegidos) >= cuantos_total else None
+    if len(elegidos) < cuantos_total:
+        return None
+    return _a_los_extremos(rnd, elegidos)
 
 # Cuántos días de cada dominio lleva la semana. NO es fijo, y tenerlo fijo era
 # un problema que no se veía hasta mirar el mes entero: con 3 glucolíticos
