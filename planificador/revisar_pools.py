@@ -197,6 +197,58 @@ def revisar(pools=None, catalogo=None):
     return hallazgos, dict(ausentes)
 
 
+# --- MUSC_POOLS ---------------------------------------------------------
+# El generador de musculación DE VERDAD. GEN_POOLS.musculacion no lo lee nadie
+# —lo dice el propio comentario de index.html— así que revisarlo no aporta;
+# este sí se usa y nunca se había revisado.
+#
+# La cadena esperada sale del grupo, no del rol: un día de `posterior` es
+# bisagra sea primary, secondary o isolation. El rol dice cuánto pesa el
+# movimiento en la sesión, no qué músculo mueve.
+CADENA_GRUPO = {
+    'legs': {'rodilla'},
+    'posterior': {'bisagra'},
+    'push': {'empuje horizontal', 'empuje vertical'},
+    'pull': {'traccion horizontal', 'traccion vertical'},
+}
+
+
+def revisar_musc(musc=None, catalogo=None):
+    from pools import leer_musc
+    musc = musc or leer_musc()
+    cat = catalogo or leer_catalogo()
+    hallazgos, ausentes = [], defaultdict(list)
+
+    for grupo, roles in musc.items():
+        for rol, niveles in roles.items():
+            for equipo, movs in niveles.items():
+                for m in movs:
+                    resuelto = resolver(m, cat)
+                    donde = f'{grupo}/{rol}/{equipo}'
+                    if resuelto is None:
+                        ausentes[m].append(donde)
+                        continue
+                    r = cat[resuelto]
+                    esperadas = CADENA_GRUPO.get(grupo, set())
+                    tiene = {r['cad1'], r['cad2']} - {None, ''}
+                    # Sin cadena en el catálogo no se denuncia: muchos
+                    # movimientos de aislamiento (Leg Extension, Calf Raise)
+                    # no tienen cadena asignada y eso es un hueco del catálogo,
+                    # no un error del pool. Se lista aparte.
+                    if esperadas and tiene and not (tiene & esperadas):
+                        hallazgos.append(
+                            ('Cadena', m, donde,
+                             f'el catálogo dice {sorted(tiene)}, '
+                             f'el grupo pide {sorted(esperadas)}'))
+                    exige = EQUIPO_DE[equipo]
+                    if str(r['equipo']) not in (exige, 'Cualquiera'):
+                        hallazgos.append(
+                            ('Equipo', m, donde,
+                             f"el catálogo dice {r['equipo']!r}, "
+                             f'el pool es {equipo!r}'))
+    return hallazgos, dict(ausentes)
+
+
 if __name__ == '__main__':
     hallazgos, ausentes = revisar()
 
@@ -215,5 +267,11 @@ if __name__ == '__main__':
     for m, donde in sorted(ausentes.items()):
         print(f'  {m:38} {", ".join(donde)}')
 
-    if '--duro' in sys.argv and (hallazgos or ausentes):
+    hm, am = revisar_musc()
+    print(f'\n--- MUSC_POOLS (144 entradas, el generador de musculación real) ---')
+    print(f'{len(hm)} desacuerdos, {len(am)} movimientos fuera del catálogo')
+    for regla, m, donde, detalle in sorted(hm):
+        print(f'  {regla:8} {m:38} {donde:28} {detalle}')
+
+    if '--duro' in sys.argv and (hallazgos or ausentes or hm or am):
         sys.exit(1)

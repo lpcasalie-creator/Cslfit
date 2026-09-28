@@ -107,6 +107,59 @@ def leer_pools(ruta=APP):
     return pools
 
 
+MUSC_LISTAS_ESPERADAS = 24       # 4 grupos × 3 roles × 2 equipos
+
+
+def leer_musc(ruta=APP):
+    """{grupo: {rol: {'limitado': [...], 'completo': [...]}}}
+
+    MUSC_POOLS es el generador de musculación DE VERDAD. GEN_POOLS.musculacion
+    existe pero no lo lee nadie: lo dice su propio comentario en index.html
+    —"contenido MUERTO (verificado — _musculacionDay y _musculacionFullBody
+    usan exclusivamente MUSC_POOLS) ... No se modifica ni se borra"— y quedó de
+    una versión anterior al enfoque propio de Musculación.
+
+    Acá los nombres traen el esquema pegado ('Leg Curl 3x15'), al revés de
+    GEN_POOLS, que los tiene pelados.
+    """
+    fuente = Path(ruta).read_text(encoding='utf-8')
+    i = fuente.find('const MUSC_POOLS')
+    if i < 0:
+        raise RuntimeError(f'no encontré MUSC_POOLS en {ruta}')
+    bloque = fuente[i:fuente.find('\n};', i)]
+
+    musc, grupo, rol = {}, None, None
+    for linea in bloque.split('\n')[1:]:
+        m = _FOCO.match(linea)
+        if m:
+            grupo, rol = m.group(1), None
+            musc[grupo] = {}
+            continue
+        if _CIERRE.match(linea):
+            grupo = rol = None
+            continue
+        if grupo is None:
+            continue
+        m = _CLAVE.match(linea)
+        if m:
+            rol = m.group(1)
+            musc[grupo][rol] = {}
+            resto = m.group(2)
+        else:
+            resto = linea
+        if rol is None:
+            continue
+        for equipo, lista in _LISTA.findall(resto):
+            musc[grupo][rol][equipo] = _movs(lista)
+
+    listas = sum(len(r) for g in musc.values() for r in g.values())
+    if listas != MUSC_LISTAS_ESPERADAS:
+        raise RuntimeError(
+            f'el parser recuperó {listas} listas de MUSC_POOLS, '
+            f'esperaba {MUSC_LISTAS_ESPERADAS}')
+    return musc
+
+
 def por_movimiento(pools):
     """{movimiento: [(foco, clave, equipo), ...]}
 
