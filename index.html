@@ -9351,7 +9351,14 @@ function renderMov(){
       items.map(m=>{
         const source = MOVEMENT_SOURCE_OVERRIDE[m] || CATEGORY_SOURCE[cat];
         const pattern = MOVEMENT_PATTERN[m];
-        const patternBadge = pattern ? `<span class="badge" style="background:transparent; border:1px solid var(--border); color:var(--gray-dim); font-size:10px; margin-left:6px;">${PATTERN_LABELS[pattern]||pattern}</span>` : '';
+        // Fix (auditoría visual): border+texto usaban los 2 grises más oscuros
+        // de la paleta (--border #2a2a2a, --gray-dim #8a8a8a) sobre una tarjeta
+        // ya oscura (--card #1a1a1a) — el badge de patrón (Sentadilla/Empuje/
+        // Jalón...) era casi invisible, la pieza de menor contraste de toda la
+        // pantalla de Movimientos. Un paso más claro en los mismos 2 tokens de
+        // gris ya existentes (sin introducir un color nuevo — el lima queda
+        // reservado para acentos reales, no para 352 badges repetidos).
+        const patternBadge = pattern ? `<span class="badge" style="background:transparent; border:1px solid var(--gray-dim); color:var(--gray); font-size:10px; margin-left:6px;">${PATTERN_LABELS[pattern]||pattern}</span>` : '';
         const scaling = MOVEMENT_SCALING[m];
         const scalingHtml = scaling ? `
           <div style="margin-top:6px;">
