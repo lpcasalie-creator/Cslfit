@@ -17,15 +17,34 @@ from collections import defaultdict, Counter
 from leer_wod import leer
 
 # --- Catálogo: base y cadenas -------------------------------------------
-wb = openpyxl.load_workbook('CSL-Fit_Catalogo_Base.xlsx', data_only=True)
+# El mismo archivo que lee generar2.py. Antes acá se leía Base, que tiene los
+# MISMOS 401 movimientos y las mismas columnas que se usan abajo; lo único que
+# cambia entre los dos es Categoría, que este módulo no mira. El cambio no
+# altera un solo hallazgo, y deja de haber dos catálogos donde hay uno.
+wb = openpyxl.load_workbook('CSL-Fit_Catalogo_Completo.xlsx', data_only=True)
 BASE, CAD1, CAD2, TECNICO = {}, {}, {}, set()
-for r in wb['Movimientos'].iter_rows(min_row=2, values_only=True):
-    if not r[0]: continue
-    nombre, base, _pat, c1, c2 = r[0], r[1], r[2], r[3], r[4]
-    BASE[nombre] = base or nombre
-    CAD1[base or nombre] = c1 or ''
-    CAD2[base or nombre] = c2 or ''
-    if str(r[7] or '').strip().lower() in ('sí', 'si'): TECNICO.add(base or nombre)
+# Varias filas comparten `Movimiento base`: Ring Row, Ring Row lastrado y Ring
+# Row vertical (pies elevados) son tres filas con base "Ring Row". Antes las
+# cadenas se asignaban en el lazo y ganaba la ÚLTIMA fila por orden de planilla,
+# lo que es una trampa: editar la cadena de una variante le cambiaba la cadena
+# al movimiento base sin que nadie lo pidiera, y en silencio.
+#
+# Ahora manda la fila que ES la base, y una variante solo rellena si la base no
+# tiene cadena propia. Hoy esto cambia UN movimiento —Single-Arm DB Press, cuya
+# fila base está vacía y cuya variante dice "empuje vertical"— y el
+# planificador no lo usa. El cambio no es por lo que arregla hoy: es para que
+# editar una variante deje de poder corromper su base.
+_filas = [r for r in wb['Movimientos'].iter_rows(min_row=2, values_only=True) if r[0]]
+for r in _filas:
+    BASE[r[0]] = r[1] or r[0]
+    if str(r[7] or '').strip().lower() in ('sí', 'si'): TECNICO.add(r[1] or r[0])
+for r in _filas:
+    clave = r[1] or r[0]
+    propia = (r[0] == clave)          # la fila del movimiento base, no una variante
+    if propia and r[3]:
+        CAD1[clave], CAD2[clave] = r[3], r[4] or ''
+    elif not CAD1.get(clave):
+        CAD1[clave], CAD2[clave] = r[3] or '', r[4] or ''
 
 def base_de(m): return BASE.get(m, m)
 def cadenas(m):
@@ -33,9 +52,13 @@ def cadenas(m):
     return [c for c in (CAD1.get(b, ''), CAD2.get(b, '')) if c]
 
 DOMINIO = lambda cap: 'fosfágeno' if cap < 14 else ('glucolítico' if cap <= 19 else 'aeróbico')
-# 30/50/20, escrito con todas sus letras en la leyenda del mes 2
-# ("Distribución objetivo: 30% / 50% / 20%"). Yo usaba 25/50/25.
-OBJETIVO = {'fosfágeno': .30, 'glucolítico': .50, 'aeróbico': .20}
+# Tercios. DECISIÓN SUYA, no medición: "33 c/u es lo correcto para mantener el
+# equilibrio". La leyenda del mes 2 dice 30/50/20, pero ese mismo mes mide
+# 40/20/40 — y el mes 3 mide 40/35/25 y septiembre 55/35/10. La leyenda nunca
+# describió lo que estaba escrito debajo, así que no hay nada medido que
+# contradecir. El objetivo real del generador es 7-7-6 (35/35/30): veinte días
+# no se dividen en tres. Ver COMPOSICIONES en generar2.py.
+OBJETIVO = {'fosfágeno': 1/3, 'glucolítico': 1/3, 'aeróbico': 1/3}
 SKILL_ESPERADO = lambda cap: (20, 22) if cap < 14 else ((17, 17) if cap <= 19 else (12, 12))
 
 
@@ -112,6 +135,23 @@ def validar(MES, titulo='Mes', imprimir=True, bloques=None, mes_del_ciclo=None):
             marcar('revisar', 'Dominios consecutivos',
                    f"S{a['semana']}: {a['dia']} y {b['dia']} son los dos {DOMINIO(a['cap'])} "
                    f"({a['cap']}' y {b['cap']}')")
+
+    # --- R4b  Días largos muy seguidos ----------------------------------
+    # Dos WODs de 20'+ en la misma semana tienen que quedar separados por tres
+    # días. R4 no alcanza: un lunes de 24' y un miércoles de 24' no son días
+    # consecutivos y aun así son dos días muy largos muy seguidos.
+    #
+    # El tres está medido: las dos únicas semanas suyas con dos días de 20'+
+    # —mes 2 semana 7 y mes 3 semana 12— los ponen martes y viernes las dos
+    # veces. La semana 8 del mes 2 lleva cuatro largos seguidos, pero es un
+    # cierre de ciclo a propósito; acá se denuncia igual y se explica al leerlo.
+    for semana in sorted({d['semana'] for d in dias}):
+        largos = [d for d in dias if d['semana'] == semana and d['cap'] >= 20]
+        for a, b in zip(largos, largos[1:]):
+            if b['i'] - a['i'] < 3:
+                marcar('revisar', 'Días largos muy seguidos',
+                       f"S{semana}: {a['dia']} {a['cap']}' y {b['dia']} {b['cap']}' "
+                       f"— {b['i'] - a['i']} día(s) de hueco, mínimo 3")
 
     # --- R5  Distribución del mes ---------------------------------------
     c = Counter(DOMINIO(d['cap']) for d in dias)

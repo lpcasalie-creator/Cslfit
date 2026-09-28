@@ -2,7 +2,13 @@
 """Leer un WOD escrito como los escribe Luis. Prueba de concepto, no toca la app."""
 import openpyxl, re, unicodedata
 
-wb = openpyxl.load_workbook('CSL-Fit_Catalogo_Base.xlsx', data_only=True)
+# Un solo catálogo para los tres módulos que lo leen. Antes generar2.py leía
+# Completo y este y validar.py leían Base, que son los MISMOS 401 movimientos
+# y solo se diferencian en la columna Categoría: Base la tiene vacía en 267
+# filas, Completo la tiene entera. Acá se usa solo la columna Movimiento, así
+# que el cambio no altera nada — pero tres archivos para un catálogo es cómo
+# se llega a que dos módulos discutan sobre datos que creen compartir.
+wb = openpyxl.load_workbook('CSL-Fit_Catalogo_Completo.xlsx', data_only=True)
 CAT = [str(r[0]) for r in wb['Movimientos'].iter_rows(min_row=2, values_only=True) if r[0]]
 
 def norm(t):

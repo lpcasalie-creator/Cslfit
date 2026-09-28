@@ -176,7 +176,7 @@ def render(semanas):
         for c in ('STRENGTH', 'GYMNASTICS', 'METCON', 'ACCESSORY'))
     o.append(f'<tr><td colspan="5" class="pie">{cuadros}| PROG. = Progresión '
              '| (Rx) = Rx | (Esc) = Escala | 🟢 Corto &lt;14\' · 🟡 Medio 14-19\' '
-             '· 🔴 Largo 20\'+ · Objetivo 30/50/20</td></tr>')
+             '· 🔴 Largo 20\'+ · Objetivo 33/33/33</td></tr>')
     o.append('</table></body></html>')
     return '\n'.join(o)
 
