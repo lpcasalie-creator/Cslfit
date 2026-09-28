@@ -3196,9 +3196,15 @@ const WOD_COMBOS = {
 // el WOD sin importar la restricción del atleta, aunque la Fuerza/Skill del
 // mismo día sí la respetaran. Se filtra el combo completo (no el movimiento
 // suelto, para no romper el formato "N ejercicios por ronda" del WOD).
+// Fix (auditoría, motor de Fuerza): faltaba la entrada 'hombro' — a diferencia
+// de rodilla/espalda, ningún combo de WOD_COMBOS se filtraba nunca para
+// restricción de hombro. "DB Thrusters" (empuje overhead bajo fatiga, mismo
+// riesgo real que ya excluye RESTRICTION_EXCLUDE.hombro para Push Press/Strict
+// Press/Overhead Squat) aparece en 3 de los 13 combos sin ningún filtro.
 const WOD_RESTRICTION_BAN = {
   rodilla: ['Walking Lunges', 'Box Step-ups'],
   espalda: ['KB Swings'],
+  hombro: ['DB Thrusters'],
 };
 function _wodComboOk(combo, restriction){
   const ban = WOD_RESTRICTION_BAN[restriction];
