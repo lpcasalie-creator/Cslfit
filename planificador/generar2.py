@@ -443,14 +443,26 @@ def arma_wod(rnd, categoria, prohibidos, cuantos_total, cap=None,
 # son 🟡x🟡y🟡 con {x,y} = {🟢,🔴}. Dos formas. En 160 semanas generadas
 # salieron exactamente esas dos el 98% de las veces — el mes se leía a máquina.
 #
-# Sus cuatro semanas de septiembre son 3-1-1, 2-2-1, 3-2-0 y 3-2-0: la
-# composición cambia todas las semanas. Estas cuatro suman 6-10-4 en el mes,
-# que es el 30/50/20 que dice la leyenda de su planilla del mes 2.
+# ESTO ES UNA DECISIÓN SUYA, NO UNA MEDICIÓN. Sus tres meses transcritos no
+# coinciden entre ellos ni con la leyenda de su propia planilla:
+#
+#     Mes 2        8-4-8    40/20/40     (su leyenda dice 30/50/20)
+#     Mes 3        8-7-5    40/35/25
+#     Septiembre  11-7-2    55/35/10
+#
+# No hay distribución medida que defender: son tres meses distintos. Él eligió
+# tercios — "33 c/u es lo correcto para mantener el equilibrio". Veinte días
+# no se dividen en tres, así que el mes queda 7-7-6 (35/35/30) y el que se come
+# el redondeo hacia abajo es el aeróbico, porque es el día más caro: cap de
+# 20-24' y solo 12' de Skill, contra 20-22' de Skill en un día fosfágeno.
+#
+# Las formas semanales (2-2-1, 2-1-2, 1-2-2) sí salen de su planilla: son tres
+# de las seis que aparecen en esos tres meses, y 2-2-1 es la más repetida.
 COMPOSICIONES = [
- ['fosfágeno', 'glucolítico', 'glucolítico', 'glucolítico', 'aeróbico'],
  ['fosfágeno', 'fosfágeno', 'glucolítico', 'glucolítico', 'aeróbico'],
+ ['fosfágeno', 'fosfágeno', 'glucolítico', 'aeróbico', 'aeróbico'],
+ ['fosfágeno', 'glucolítico', 'glucolítico', 'aeróbico', 'aeróbico'],
  ['fosfágeno', 'fosfágeno', 'glucolítico', 'glucolítico', 'aeróbico'],
- ['fosfágeno', 'glucolítico', 'glucolítico', 'glucolítico', 'aeróbico'],
 ]
 
 

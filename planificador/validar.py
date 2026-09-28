@@ -33,9 +33,13 @@ def cadenas(m):
     return [c for c in (CAD1.get(b, ''), CAD2.get(b, '')) if c]
 
 DOMINIO = lambda cap: 'fosfágeno' if cap < 14 else ('glucolítico' if cap <= 19 else 'aeróbico')
-# 30/50/20, escrito con todas sus letras en la leyenda del mes 2
-# ("Distribución objetivo: 30% / 50% / 20%"). Yo usaba 25/50/25.
-OBJETIVO = {'fosfágeno': .30, 'glucolítico': .50, 'aeróbico': .20}
+# Tercios. DECISIÓN SUYA, no medición: "33 c/u es lo correcto para mantener el
+# equilibrio". La leyenda del mes 2 dice 30/50/20, pero ese mismo mes mide
+# 40/20/40 — y el mes 3 mide 40/35/25 y septiembre 55/35/10. La leyenda nunca
+# describió lo que estaba escrito debajo, así que no hay nada medido que
+# contradecir. El objetivo real del generador es 7-7-6 (35/35/30): veinte días
+# no se dividen en tres. Ver COMPOSICIONES en generar2.py.
+OBJETIVO = {'fosfágeno': 1/3, 'glucolítico': 1/3, 'aeróbico': 1/3}
 SKILL_ESPERADO = lambda cap: (20, 22) if cap < 14 else ((17, 17) if cap <= 19 else (12, 12))
 
 
