@@ -6500,7 +6500,14 @@ function _crossfitDay(offset){
     } else {
       // Nativo: Fuerza, escalado por duración. Olímpico usa esquema piramidal +
       // pool hermano olympic_acc para el 2do movimiento (ya existente, sin inventar).
-      const nFuerzaNativo = conteoDuracion.fuerza;
+      // Fix (auditoría, hallazgo #4): conteoDuracion.fuerza vale 1 a 30'/45'/60' —
+      // el bucle de abajo nunca llegaba a i===1, así que el "2do movimiento" de la
+      // línea de arriba era inalcanzable en esas 3 duraciones (confirmado por
+      // simulación: 4/4 días 'olympic' a 60' con un solo lift real). Se fuerza un
+      // mínimo de 2 SOLO para 'olympic' — el resto de los patrones no cambia. El
+      // costo (1 movimiento extra sobre el pie estándar) ya lo compensa el propio
+      // descuento de cap más abajo (movimientosExtra17a2), sin tocar esa lógica.
+      const nFuerzaNativo = dayPattern==='olympic' ? Math.max(conteoDuracion.fuerza, 2) : conteoDuracion.fuerza;
       for(let i=0; i<nFuerzaNativo; i++){
         let poolUsar = pool, keyUsar = src.key;
         if(dayPattern==='olympic' && i===1){ poolUsar = GEN_POOLS.fuerza.olympic_acc[opts.equipment]; keyUsar = 'olympic_acc'; }
