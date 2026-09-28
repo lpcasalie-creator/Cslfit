@@ -288,6 +288,12 @@
     fill:none; stroke:var(--gray-dim); stroke-width:2; stroke-linecap:round; stroke-linejoin:round;
   }
   svg.stattileicon.flame-icon{ fill:var(--gray-dim); stroke:none; }
+  .empty-state{ text-align:center; padding:20px 10px; }
+  .empty-state-icon{
+    width:30px; height:30px; margin:0 auto 10px; display:block; opacity:0.55;
+    fill:none; stroke:var(--gray-dim); stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round;
+  }
+  .empty-state p{ margin:0; }
   .rec-row{ display:flex; justify-content:space-between; font-size:12.5px; padding:7px 0; border-bottom:1px solid var(--border); }
   .rec-row:last-child{ border-bottom:none; }
   .rec-row b{ font-weight:600; }
@@ -1244,6 +1250,16 @@ if(window.ResizeObserver){
 
 function escapeHtml(str){
   return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Fix (auditoría visual): ~8 puntos de la app mostraban una lista vacía como
+// un <p class="muted"> suelto — el estado más pobre de toda la interfaz,
+// sin ningún apoyo visual. Un solo ícono genérico (caja vacía) reutilizado en
+// todos, en vez de uno distinto por contexto — misma lógica que ya se usó
+// para el ícono de "sin datos" del gráfico de progreso, pero como componente
+// HTML reutilizable en vez de dibujo de canvas.
+function emptyStateHtml(text){
+  return `<div class="empty-state"><svg class="empty-state-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M3 8l3-5h12l3 5"/><path d="M9 12h6"/></svg><p class="muted">${text}</p></div>`;
 }
 
 function toast(message, type='info'){
@@ -4730,7 +4746,7 @@ async function renderCrossfitHistory(){
     .eq('user_id', currentUser.id).eq('focus', 'crossfit')
     .order('week', {ascending:true}).order('day', {ascending:true});
   const rows = data || [];
-  if(!rows.length){ el.innerHTML = '<p class="muted" style="font-size:12px;">Sin entrenamientos CrossFit registrados todavía.</p>'; return; }
+  if(!rows.length){ el.innerHTML = emptyStateHtml('Sin entrenamientos CrossFit registrados todavía.'); return; }
   el.innerHTML = rows.map(r=>{
     const resumen = r.result && r.result.rounds!=null
       ? `${r.result.rounds} rondas${r.result.extraReps?` + ${r.result.extraReps}`:''}`
@@ -7769,7 +7785,7 @@ async function deleteBlock(id){
 
 function renderBlocksList(){
   const el = document.getElementById('blocksList');
-  if(!_blocksCache.length){ el.innerHTML = '<p class="muted" style="font-size:12px;">Sin bloques guardados todavía.</p>'; return; }
+  if(!_blocksCache.length){ el.innerHTML = emptyStateHtml('Sin bloques guardados todavía.'); return; }
   const byCategory = {};
   _blocksCache.forEach(b=>{ (byCategory[b.category] = byCategory[b.category]||[]).push(b); });
   let html = '';
@@ -7946,7 +7962,7 @@ async function renderProgList(){
       </div>
       <div id="progView_${p.id}" style="display:none; margin-top:10px;"></div>
     </div>`;
-  }).join('') : '<p class="muted">No has creado programas todavía.</p>';
+  }).join('') : emptyStateHtml('No has creado programas todavía.');
 }
 
 function toggleProgView(programId){
@@ -8490,7 +8506,7 @@ async function renderAthletesList(){
   }
   const map = {};
   (assigns||[]).forEach(a=>{ map[a.athlete_id] = a; });
-  if(!athletes || !athletes.length){ el.innerHTML = '<p class="muted">Sin alumnos todavía — se crean solos cuando alguien se loguea por primera vez.</p>'; return; }
+  if(!athletes || !athletes.length){ el.innerHTML = emptyStateHtml('Sin alumnos todavía — se crean solos cuando alguien se loguea por primera vez.'); return; }
 
   // p.name es el nombre de programa escrito por el coach (texto libre) — el
   // mismo dato ya se escapa en populateContinueFromSelect/populateActiveProgSelect
@@ -9353,7 +9369,7 @@ function renderMov(){
         </div>`;
       }).join('');
   });
-  document.getElementById('movList').innerHTML = html || '<p class="muted">Sin resultados.</p>';
+  document.getElementById('movList').innerHTML = html || emptyStateHtml('Sin resultados.');
 
   document.getElementById('girlsList').innerHTML = BENCHMARK_WODS.girls
     .map(w=>`<div class="score-item"><span><b>${w.name}</b><br><span class="muted">${w.desc}</span></span>
@@ -9748,7 +9764,7 @@ async function renderBarAnalysisList(){
   const { data, error } = await sb.from('wl_analysis').select('*').eq('user_id', currentUser.id).order('created_at',{ascending:false});
   if(error){ el.innerHTML = `<p class="muted">Error: ${error.message}</p>`; return; }
   _barAnalysisCache = data || [];
-  if(!_barAnalysisCache.length){ el.innerHTML = '<p class="muted">Sin análisis guardados todavía.</p>'; return; }
+  if(!_barAnalysisCache.length){ el.innerHTML = emptyStateHtml('Sin análisis guardados todavía.'); return; }
   el.innerHTML = _barAnalysisCache.map(a=>`<div class="score-item" style="flex-direction:column; align-items:stretch;">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
         <span><b>${escapeHtml(a.movement)}</b> — pico ${Number(a.peak_velocity).toFixed(2)} m/s, prom ${Number(a.avg_velocity).toFixed(2)} m/s<br>
