@@ -63,6 +63,18 @@ CADENA_DE = {
 
 EQUIPO_DE = {'limitado': 'Limitado', 'completo': 'Completo'}
 
+# Un movimiento de equipo limitado que está a propósito en un pool de equipo
+# completo. Decisión suya, con su razón: en gimnasia/push/completo el Push-up
+# pelado convive con cinco variantes de handstand porque aunque el box tenga
+# todo, siempre hay alguien que recién entra y no hace un HSPU. Es el piso de
+# la lista, no un descuido.
+#
+# Va anotado y no silenciado: si mañana alguien se pregunta por qué el checker
+# no lo marca, la razón está acá y no hay que reconstruirla.
+PISO_A_PROPOSITO = {
+    ('Push-up', 'gimnasia', 'push', 'completo'),
+}
+
 # Movimientos que pertenecen de verdad a DOS familias. El catálogo guarda un
 # solo `Patrón`, así que sin esta tabla el checker los denunciaría para siempre
 # y el informe se llenaría de ruido que nadie va a arreglar — que es como muere
@@ -89,6 +101,48 @@ DOS_FAMILIAS = {
 }
 
 
+# Los nombres del pool que el catálogo no tiene tal cual. Decisión suya: "el
+# catálogo aprende a leerlos", nada de tocar index.html. Y el que los lee es el
+# resolvedor que YA EXISTE en leer_wod.py —su ALIAS, su norm, su INDICE— porque
+# escribir un segundo normalizador acá es cómo los dos empiezan a discrepar.
+#
+# Nueve de los once salen solos con ese índice, tomando el match más largo:
+#
+#     Row 250m                 -> Row              Bike Erg 500m -> Bike Erg
+#     Ski Erg 250m / 300m      -> Ski Erg          Intervalos 200m -> Intervalos
+#     Wall Balls               -> Wall Ball        Hack Squat estilo barra -> Hack Squat
+#     DB Floor Press con pausa -> DB Floor Press
+#
+# Los otros dos no, y van a mano porque el índice los resolvía mal o no los
+# resolvía:
+ALIAS_POOL = {
+    # El índice lo llevaba a 'Deadlift', que es la barra: otra cadena y otro
+    # equipo. En el catálogo el movimiento existe con el otro nombre, y un
+    # peso muerto a una pierna con mancuerna es un RDL a una pierna.
+    'Single-Leg DB Deadlift': 'Single-Leg DB RDL',
+}
+# `Front Rack Lunge` queda a propósito SIN resolver hasta que él decida: el
+# catálogo tiene `Front Rack Walking Lunge` (barra, Completo) y `DB Front Rack
+# Lunge` (mancuerna), pero no la versión en el lugar con barra. Y el pool que lo
+# usa —musculacion/legs/completo— ya lleva `Walking Lunge (barra)`, así que
+# mapearlo al walking dejaría dos zancadas caminando en la misma lista de seis.
+SIN_RESOLVER_A_PROPOSITO = {'Front Rack Lunge'}
+
+
+def resolver(nombre, catalogo):
+    """El nombre del pool -> el nombre del catálogo, o None."""
+    if nombre in catalogo:
+        return nombre
+    if nombre in ALIAS_POOL:
+        return ALIAS_POOL[nombre]
+    from leer_wod import INDICE, norm, sin_distancia
+    texto = sin_distancia(norm(nombre))
+    for rx, canonico in INDICE:          # INDICE va del más largo al más corto
+        if rx.search(texto) and canonico in catalogo:
+            return canonico
+    return None
+
+
 def leer_catalogo(ruta=CATALOGO):
     wb = openpyxl.load_workbook(ruta, data_only=True)
     filas = {}
@@ -110,13 +164,18 @@ def revisar(pools=None, catalogo=None):
         for clave, niveles in claves.items():
             for equipo, movs in niveles.items():
                 for m in movs:
-                    if m not in cat:
+                    resuelto = resolver(m, cat)
+                    if resuelto is None:
                         ausentes[m].append(f'{foco}/{clave}/{equipo}')
                         continue
-                    r = cat[m]
+                    r = cat[resuelto]
+                    # El checker compara contra la fila del catálogo, pero las
+                    # excepciones anotadas se escribieron con el nombre del
+                    # pool. Se prueban los dos para que un alias no las anule.
+                    m_ex = m if (m, clave) in DOS_FAMILIAS else resuelto
                     donde = f'{foco}/{clave}/{equipo}'
                     esperado = PATRON_DE.get(clave)
-                    permitido = DOS_FAMILIAS.get((m, clave))
+                    permitido = DOS_FAMILIAS.get((m_ex, clave))
                     if esperado and r['patron'] not in (esperado, permitido):
                         hallazgos.append(
                             ('Patrón', m, donde,
@@ -129,7 +188,8 @@ def revisar(pools=None, catalogo=None):
                              f"el catálogo dice {r['cad1']!r} / {r['cad2']!r}, "
                              f'la clave pide {cadena!r}'))
                     exige = EQUIPO_DE[equipo]
-                    if str(r['equipo']) not in (exige, 'Cualquiera'):
+                    if (str(r['equipo']) not in (exige, 'Cualquiera')
+                            and (m, foco, clave, equipo) not in PISO_A_PROPOSITO):
                         hallazgos.append(
                             ('Equipo', m, donde,
                              f"el catálogo dice {r['equipo']!r}, "
