@@ -95,6 +95,13 @@
   .btn.secondary{background:transparent; border:1px solid var(--lime); color:var(--lime);}
   .btn.small{width:auto; padding:8px 14px; font-size:13px; margin-top:0;}
   .btn.danger{background:transparent; border:1px solid var(--danger); color:var(--danger);}
+  .timer-preset-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  button.timer-preset{
+    background:transparent; border:1px solid var(--lime); color:var(--lime); border-radius:8px;
+    padding:12px 8px; font-weight:800; font-family:'Barlow Condensed',sans-serif;
+    text-transform:uppercase; letter-spacing:0.3px; font-size:13px; cursor:pointer;
+  }
+  button.timer-preset:active{background:rgba(204,255,0,0.12);}
 
   table{width:100%; border-collapse:collapse; font-size:13px;}
   th,td{padding:7px 6px; text-align:center; border-bottom:1px solid var(--border);}
@@ -181,6 +188,14 @@
   }
   button.del:focus-visible, button.skill-info:focus-visible, button.link-inline:focus-visible,
   .rec-row.tap:focus-visible, .stat-tile.tap:focus-visible, button.daycell:focus-visible{
+    outline:2px solid var(--lime); outline-offset:2px;
+  }
+  /* Fix (auditoría visual/accesibilidad): las dos reglas de arriba solo cubrían
+     6 clases puntuales — cualquier otro botón/link (tabbar, subnav, accesos
+     rápidos, botones de formulario) navegado con teclado no mostraba NINGÚN
+     indicador de foco visible. Regla general de respaldo, sin pisar la de
+     arriba (misma declaración, solo amplía el selector a todo lo interactivo). */
+  button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
     outline:2px solid var(--lime); outline-offset:2px;
   }
   .link-inline{color:var(--lime); text-decoration:underline; cursor:pointer;}
@@ -309,7 +324,7 @@
     <div class="brand" style="font-size:28px; font-weight:800; text-align:center; margin-bottom:6px; font-family:'Barlow Condensed',sans-serif; text-transform:uppercase;">
       CSL <span style="color:var(--lime);">TRAINING</span>
     </div>
-    <p style="text-align:center; color:var(--gray); font-size:13px; margin-bottom:24px;">Coach Luis Casali · <span style="color:#555;">v3.7</span></p>
+    <p style="text-align:center; color:var(--gray); font-size:13px; margin-bottom:24px;">Coach Luis Casali · <span style="color:#555;" id="authVersionTag">v3.7</span></p>
 
     <div id="authLoading" class="card" style="text-align:center;">
       <p class="muted">Verificando sesión...</p>
@@ -524,6 +539,18 @@
         <button class="btn secondary" onclick="pauseTimer()">Pausar</button>
       </div>
       <button class="btn secondary" onclick="resetTimer()">Reset</button>
+    </div>
+    <div class="card">
+      <h3>Presets rápidos</h3>
+      <p class="muted" style="margin-bottom:10px;">Tocá uno para precargarlo — después apretá Start.</p>
+      <div class="timer-preset-grid">
+        <button type="button" class="timer-preset" onclick="applyTimerPreset('amrap',{minutes:12})">AMRAP 12'</button>
+        <button type="button" class="timer-preset" onclick="applyTimerPreset('amrap',{minutes:20})">AMRAP 20'</button>
+        <button type="button" class="timer-preset" onclick="applyTimerPreset('fortime',{minutes:15})">For Time (cap 15')</button>
+        <button type="button" class="timer-preset" onclick="applyTimerPreset('fortime',{minutes:20})">For Time (cap 20')</button>
+        <button type="button" class="timer-preset" onclick="applyTimerPreset('emom',{sets:10,work:40,rest:20})">EMOM 10x1'</button>
+        <button type="button" class="timer-preset" onclick="applyTimerPreset('emom',{sets:20,work:20,rest:10})">Tabata 20/10 x20</button>
+      </div>
     </div>
   </section>
 
@@ -1098,7 +1125,7 @@
 </main>
 
 <nav class="tabbar">
-  <button class="active" data-group="home" onclick="showGroup('home')">Home</button>
+  <button class="active" data-group="home" onclick="showGroup('home')" aria-current="page">Home</button>
   <button data-group="wod" onclick="showGroup('wod')">WOD</button>
   <button data-group="rm" onclick="showGroup('rm')">RM</button>
   <button data-group="scores" onclick="showGroup('scores')">Scores</button>
@@ -1196,8 +1223,10 @@ const UX01_GRUPOS_SIN_SUBMENU = new Set(['home','mov']);
 let UX01_ULTIMA_VISTA_POR_GRUPO = {};
 
 function showGroup(grupo){
-  document.querySelectorAll('.tabbar button[data-group]').forEach(b=>b.classList.remove('active'));
-  document.querySelector(`.tabbar button[data-group="${grupo}"]`).classList.add('active');
+  document.querySelectorAll('.tabbar button[data-group]').forEach(b=>{ b.classList.remove('active'); b.removeAttribute('aria-current'); });
+  const grupoBtnActivo = document.querySelector(`.tabbar button[data-group="${grupo}"]`);
+  grupoBtnActivo.classList.add('active');
+  grupoBtnActivo.setAttribute('aria-current', 'page');
   document.querySelectorAll('.subnav').forEach(s=>s.style.display='none');
   const sub = document.getElementById(`subnav-${grupo}`);
   if(sub) sub.style.display='flex';
@@ -1222,18 +1251,19 @@ function showView(id){
   // deja sin ningún botón de grupo activo cuando la vista no pertenece a
   // ninguno, en vez de forzar 'home' por default.
   const grupo = UX01_VIEW_GROUP[id] || (id === 'settings' ? null : 'home');
-  document.querySelectorAll('.tabbar button[data-group]').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.tabbar button[data-group]').forEach(b=>{ b.classList.remove('active'); b.removeAttribute('aria-current'); });
   const grupoBtn = grupo ? document.querySelector(`.tabbar button[data-group="${grupo}"]`) : null;
-  if(grupoBtn) grupoBtn.classList.add('active');
+  if(grupoBtn){ grupoBtn.classList.add('active'); grupoBtn.setAttribute('aria-current', 'page'); }
   document.querySelectorAll('.subnav').forEach(s=>s.style.display='none');
   const sub = grupo ? document.getElementById(`subnav-${grupo}`) : null;
   if(sub){ sub.style.display='flex'; UX01_ULTIMA_VISTA_POR_GRUPO[grupo] = id; }
   document.body.classList.toggle('has-subnav', !!sub);
 
-  document.querySelectorAll('.subnav button').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.subnav button').forEach(b=>{ b.classList.remove('active'); b.removeAttribute('aria-current'); });
   const activeBtn = document.querySelector(`.subnav button[data-tab="${id}"]`);
   if(activeBtn){
     activeBtn.classList.add('active');
+    activeBtn.setAttribute('aria-current', 'page');
     activeBtn.scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'});
   }
   if(id==='pct') refreshPctData().then(renderPctTable);
@@ -1625,6 +1655,24 @@ function renderTimerInputs(){
   const statusEl = document.getElementById('timerStatus');
   statusEl.textContent = '';
   statusEl.className = 'timer-status';
+}
+// Fix (auditoría visual/UX): el Timer dejaba ~40% de la pantalla vacía por
+// debajo de la tarjeta en la mayoría de los celulares — se agregan presets
+// rápidos (formatos reales que ya usa la programación de CrossFit/casa,
+// AMRAP/For Time/EMOM/Tabata) que llenan ese espacio con algo útil en vez de
+// solo decorativo. Reutiliza renderTimerInputs()/resetTimer() tal cual —
+// mismo camino que ya usa el select de Modo, sin lógica nueva de timer.
+function applyTimerPreset(mode, params){
+  document.getElementById('timerMode').value = mode;
+  renderTimerInputs();
+  resetTimer();
+  if(mode === 'emom'){
+    document.getElementById('timerSets').value = params.sets;
+    document.getElementById('timerWorkSec').value = params.work;
+    document.getElementById('timerRestSec').value = params.rest;
+  } else {
+    document.getElementById('timerMinutes').value = params.minutes;
+  }
 }
 function fmt(s){
   const m = Math.floor(Math.abs(s)/60), sec = Math.abs(s)%60;
@@ -9823,6 +9871,13 @@ async function delScore(id){
 
 /* ---------------- SUPABASE: config + auth ---------------- */
 const APP_VERSION = 'v7.19-fase18-completa';
+// Fix (auditoría visual/UX): APP_VERSION es un identificador de fase de
+// desarrollo interno ("v7.19-fase18-completa") — mostrarlo tal cual al
+// atleta final se ve como un artefacto de debugging filtrado a producción.
+// Se deriva una versión "limpia" (solo el número, ej. "v7.19") para toda
+// UI de cara al usuario, sin tocar APP_VERSION (que puede seguir sirviendo
+// para debugging/soporte si hace falta el detalle completo).
+const APP_VERSION_DISPLAY = APP_VERSION.match(/^v?\d+(\.\d+)?/)?.[0].replace(/^(?!v)/,'v') || APP_VERSION;
 const SUPABASE_URL = 'https://cpjrmkrokowzbhajfjqf.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_gQ4HJ7s4G-NkLRROIL6qiQ_ef8Lc4LR';
 // Fase 28 (hallazgo real, analizando la app como usuaria/o): si el script de
@@ -9959,7 +10014,7 @@ function applyBranding(bp){
   if(homeBrandTagline) homeBrandTagline.textContent = [handle, tagline].filter(Boolean).join(' · ');
 
   const footer = document.getElementById('appFooter');
-  if(footer) footer.innerHTML = `${handle ? escapeHtml(handle)+' · ' : ''}<span>${escapeHtml(name)}</span>${creds?' · '+escapeHtml(creds):''} · <span id="appVersionTag">${APP_VERSION}</span>`;
+  if(footer) footer.innerHTML = `${handle ? escapeHtml(handle)+' · ' : ''}<span>${escapeHtml(name)}</span>${creds?' · '+escapeHtml(creds):''} · <span id="appVersionTag">${APP_VERSION_DISPLAY}</span>`;
 
   document.title = `${name}${coachName ? ' | '+coachName : ''}`;
 }
@@ -10111,7 +10166,11 @@ window.addEventListener('appinstalled', ()=>{
 </script>
 
 <footer class="brandfoot" id="appFooter">@luis_casali · <span>CSL-Fit</span> · CF-L3 · CCFT · USAW L1 · HYROX Official Coach · <span id="appVersionTag"></span></footer>
-<script>document.getElementById('appVersionTag').textContent = APP_VERSION;</script>
+<script>
+  document.getElementById('appVersionTag').textContent = APP_VERSION_DISPLAY;
+  const authVerTag = document.getElementById('authVersionTag');
+  if(authVerTag) authVerTag.textContent = APP_VERSION_DISPLAY;
+</script>
 
 </div><!-- /appRoot -->
 
