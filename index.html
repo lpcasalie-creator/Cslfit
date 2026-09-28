@@ -6562,7 +6562,14 @@ function _crossfitDay(offset){
       };
       const catsAccesorio = catsAccesorioPorPattern[dayPattern] || ['core','midline','unilateral'];
       const catAccesorio = _pick(catsAccesorio, _mixIdx(wi, ti, 900));
-      const movAccesorio = _pickDedup(SKILL_POOLS[catAccesorio], wi, ti + 199 + regenSeedDia*19, opts, 'accesorio_'+catAccesorio);
+      // Fix (auditoría de restricciones, hallazgo #1): patternKey iba con prefijo
+      // 'accesorio_' (ej. 'accesorio_unilateral'), una clave que nunca existe en
+      // RESTRICTION_DEFAULT (indexado sin prefijo, igual que _fuerzaDay/_gimnasiaDay
+      // ya lo hacen en otros puntos del motor) — _restrict() encontraba la
+      // restricción real pero no el sustituto, y devolvía el movimiento restringido
+      // sin cambios. Confirmado por simulación: 28% de sesiones con restricción de
+      // rodilla colaban movimientos como "Cossack Squat 3x6/lado" sin sustituir.
+      const movAccesorio = _pickDedup(SKILL_POOLS[catAccesorio], wi, ti + 199 + regenSeedDia*19, opts, catAccesorio);
       movsFuerza.push(movAccesorio);
       lineasFuerza.push(movAccesorio);
       // Fix (auditoría de presupuesto de tiempo): a 120' un solo accesorio fijo
@@ -6576,7 +6583,7 @@ function _crossfitDay(offset){
       if(opts.duration === '120' || domain === 'corto'){
         const catsRestantes = catsAccesorio.filter(c=>c!==catAccesorio);
         const catAccesorio2 = _pick(catsRestantes.length ? catsRestantes : catsAccesorio, _mixIdx(wi, ti, 1301));
-        const movAccesorio2 = _pickDedup(SKILL_POOLS[catAccesorio2], wi, ti + 599 + regenSeedDia*19, opts, 'accesorio_'+catAccesorio2);
+        const movAccesorio2 = _pickDedup(SKILL_POOLS[catAccesorio2], wi, ti + 599 + regenSeedDia*19, opts, catAccesorio2);
         movsFuerza.push(movAccesorio2);
         lineasFuerza.push(movAccesorio2);
       }
