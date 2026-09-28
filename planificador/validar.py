@@ -17,7 +17,11 @@ from collections import defaultdict, Counter
 from leer_wod import leer
 
 # --- Catálogo: base y cadenas -------------------------------------------
-wb = openpyxl.load_workbook('CSL-Fit_Catalogo_Base.xlsx', data_only=True)
+# El mismo archivo que lee generar2.py. Antes acá se leía Base, que tiene los
+# MISMOS 401 movimientos y las mismas columnas que se usan abajo; lo único que
+# cambia entre los dos es Categoría, que este módulo no mira. El cambio no
+# altera un solo hallazgo, y deja de haber dos catálogos donde hay uno.
+wb = openpyxl.load_workbook('CSL-Fit_Catalogo_Completo.xlsx', data_only=True)
 BASE, CAD1, CAD2, TECNICO = {}, {}, {}, set()
 for r in wb['Movimientos'].iter_rows(min_row=2, values_only=True):
     if not r[0]: continue
