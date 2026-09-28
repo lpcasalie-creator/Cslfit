@@ -4621,6 +4621,21 @@ const CROSSFIT_TOTAL_VOLUME_TARGET = {
   intermedio:   { corto:80,  medio:120, largo:180 },
   avanzado:     { corto:100, medio:150, largo:220 },
 };
+// Fix (auditoría, hallazgo #2): la tabla de arriba es un total FIJO por nivel×dominio,
+// sin relación con el cap real de la sesión — que sí crece semana a semana
+// (_domainBaseCap sube con `wi`) y varía con duración/objetivo/feedback (_scaleCap).
+// Resultado: la densidad real (reps/minuto) bajaba con las semanas sin que fuera
+// una periodización buscada, y una sesión de 30' usaba el mismo total que una de
+// 120' en el mismo dominio. 60' es la duración de referencia real del sistema —
+// única donde _scaleCap()/CROSSFIT_DURATION_BONUS son neutros (factor 1) — así que
+// el cap de semana 1 a 60' (_domainBaseCap(domain,0)) es el denominador correcto
+// para derivar una tasa reps/min SIN cambiar el valor exacto que la tabla ya da en
+// ese caso de referencia (el más auditado/simulado del sistema). El resto de los
+// casos (semanas siguientes, otras duraciones) pasan a escalar con el cap real.
+function _crossfitVolumeTotal(nivel, domain, cap){
+  const tasa = CROSSFIT_TOTAL_VOLUME_TARGET[nivel][domain] / _domainBaseCap(domain, 0);
+  return Math.max(1, Math.round(tasa * cap));
+}
 
 const CROSSFIT_FORMAT_BY_DOMAIN = {
   // Fase 18 (Fix 7): antes solo 2 opciones (AMRAP/For Time), ambas con nSlots=2 —
@@ -5349,8 +5364,8 @@ function _crossfitVolumeBasedPrescribe(name, wi, ti, level, domain, totalTarget,
 // que sí escalan con volumen). Si el WOD sólo tiene movimientos TIME/DISTANCE
 // (sin ancla posible), cae a un valor fijo razonable por dominio — caso borde,
 // no la regla general.
-function _crossfitForTimeRounds(elegidos, nivel, domain, opts){
-  const total = CROSSFIT_TOTAL_VOLUME_TARGET[nivel][domain];
+function _crossfitForTimeRounds(elegidos, nivel, domain, opts, cap){
+  const total = _crossfitVolumeTotal(nivel, domain, cap);
   const repsPerMovementTotal = Math.round(total / Math.max(1, elegidos.length));
   const hayAncla = elegidos.some(e => {
     const t = _crossfitPrescriptionType(e.name);
@@ -5972,7 +5987,7 @@ function _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domai
     wodTexto = `AMRAP ${cap}' (${estructuraLabel} CrossFit):\n${wodLines.join('\n')}`;
 
   } else if(wodFormat === 'For Time' || wodFormat === 'Single' || wodFormat === 'For Time 4'){
-    const total = CROSSFIT_TOTAL_VOLUME_TARGET[opts.level][domain];
+    const total = _crossfitVolumeTotal(opts.level, domain, cap);
     const repsPerMovementTotal = Math.round(total / Math.max(1, elegidos.length));
     estructuraLabel = elegidos.length===1 ? 'Single' : elegidos.length===4 ? 'Quadruplet' : elegidos.length===3 ? 'Triplet' : 'Couplet';
     if(elegidos.length === 1){
@@ -6012,14 +6027,14 @@ function _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domai
       // programe).
       let lineaFinal = linea;
       if(_crossfitPrescriptionType(mov) === 'REPS' && !_crossfitIsSkillPrescription(mov) && !CROSSFIT_COMBO_MUY_COMPLEJO.has(mov) && linea === _crossfitPrescribe(mov, wi, ti+regenSeedWod*5, opts.level, domain)){
-        const rounds = _crossfitForTimeRounds(elegidos, opts.level, domain, opts);
+        const rounds = _crossfitForTimeRounds(elegidos, opts.level, domain, opts, cap);
         const m = linea.match(/^(\d+)(\s.*)$/);
         if(m) lineaFinal = `${parseInt(m[1],10)*rounds}${m[2]}`;
       }
       lineaFinal = _crossfitConCarga(lineaFinal, mov);
       wodTexto = `For Time (cap ${cap}') (${estructuraLabel} CrossFit):\n${lineaFinal}`;
     } else {
-      const rounds = _crossfitForTimeRounds(elegidos, opts.level, domain, opts);
+      const rounds = _crossfitForTimeRounds(elegidos, opts.level, domain, opts, cap);
       const wodLines = elegidos.map((e,i)=>
         _crossfitConCarga(_crossfitVolumeBasedPrescribe(e.name, wi, ti+i+regenSeedWod*5, opts.level, domain, repsPerMovementTotal, rounds, false), e.name));
       wodTexto = `${rounds} rondas For Time (cap ${cap}') (${estructuraLabel} CrossFit):\n${wodLines.join('\n')}`;
@@ -6031,7 +6046,7 @@ function _crossfitBuildWodTexto(wodFormat, elegidos, nSlots, wi, ti, opts, domai
     wodTexto = `EMOM ${capRedondeado}' — ${elegidos.length} estaciones (rotando):\n${wodLines.join('\n')}`;
 
   } else { // Chipper
-    const total = CROSSFIT_TOTAL_VOLUME_TARGET[opts.level]['largo'];
+    const total = _crossfitVolumeTotal(opts.level, 'largo', cap);
     const wodLines = elegidos.map((e,i)=>
       _crossfitConCarga(_crossfitVolumeBasedPrescribe(e.name, wi, ti+i+regenSeedWod*5, opts.level, domain, total, elegidos.length, true), e.name));
     estructuraLabel = 'Chipper';
