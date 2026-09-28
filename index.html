@@ -3002,6 +3002,16 @@ const RESTRICTION_DEFAULT = {
   },
   espalda: {
     hinge: ["DB Hip Thrust (bajo stress lumbar)","Glute Bridge 3x15","Back Extension sin carga","Hip Thrust con pausa 3x12"],
+    // Fix (auditoría, motor de Musculación): _musculacionDay('posterior',...) llama
+    // a _restrict() con patternKey='posterior' (su propio nombre de grupo interno),
+    // que nunca existía acá — la práctica totalidad de MUSC_POOLS.posterior son
+    // variantes de deadlift/RDL, EXACTAMENTE los movimientos que RESTRICTION_EXCLUDE.
+    // espalda ya excluye. Sin este alias, _restrict() encontraba la restricción pero
+    // no el sustituto y devolvía el deadlift/RDL sin cambios — confirmado por
+    // simulación: 193 movimientos restringidos servidos en 150 sesiones. Mismos
+    // sustitutos que 'hinge' (semánticamente el mismo patrón, solo con otro nombre
+    // en el vocabulario de Musculación).
+    posterior: ["DB Hip Thrust (bajo stress lumbar)","Glute Bridge 3x15","Back Extension sin carga","Hip Thrust con pausa 3x12"],
     olympic_acc: ["Overhead Squat con barra vacía","Movilidad de cadera 5'","Front Squat barra vacía","Air Squat tempo 3x10"],
     pull_horizontal: ["Chest-Supported DB Row (torso apoyado)","Seal Row","Single-Arm DB Row con apoyo","Landmine Row torso apoyado"],
     // Fix (ver comentario en RESTRICTION_EXCLUDE.espalda): sustitutos para cuando
