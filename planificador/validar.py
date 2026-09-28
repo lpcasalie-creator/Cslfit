@@ -117,6 +117,23 @@ def validar(MES, titulo='Mes', imprimir=True, bloques=None, mes_del_ciclo=None):
                    f"S{a['semana']}: {a['dia']} y {b['dia']} son los dos {DOMINIO(a['cap'])} "
                    f"({a['cap']}' y {b['cap']}')")
 
+    # --- R4b  Días largos muy seguidos ----------------------------------
+    # Dos WODs de 20'+ en la misma semana tienen que quedar separados por tres
+    # días. R4 no alcanza: un lunes de 24' y un miércoles de 24' no son días
+    # consecutivos y aun así son dos días muy largos muy seguidos.
+    #
+    # El tres está medido: las dos únicas semanas suyas con dos días de 20'+
+    # —mes 2 semana 7 y mes 3 semana 12— los ponen martes y viernes las dos
+    # veces. La semana 8 del mes 2 lleva cuatro largos seguidos, pero es un
+    # cierre de ciclo a propósito; acá se denuncia igual y se explica al leerlo.
+    for semana in sorted({d['semana'] for d in dias}):
+        largos = [d for d in dias if d['semana'] == semana and d['cap'] >= 20]
+        for a, b in zip(largos, largos[1:]):
+            if b['i'] - a['i'] < 3:
+                marcar('revisar', 'Días largos muy seguidos',
+                       f"S{semana}: {a['dia']} {a['cap']}' y {b['dia']} {b['cap']}' "
+                       f"— {b['i'] - a['i']} día(s) de hueco, mínimo 3")
+
     # --- R5  Distribución del mes ---------------------------------------
     c = Counter(DOMINIO(d['cap']) for d in dias)
     total = len(dias)

@@ -500,6 +500,22 @@ def proponer(intentos=6000, semilla=None, previas=None, composicion=None):
         doms = list(composicion)
         rnd.shuffle(doms)
         if any(doms[i] == doms[i+1] for i in range(4)): continue
+        # Dos días largos en la misma semana van SEPARADOS POR TRES. No basta
+        # con que no estén pegados: un lunes de 24' y un miércoles de 24' no son
+        # días consecutivos para el validador y aun así son dos días muy largos
+        # muy seguidos —sus palabras, mirando la semana 18 de octubre.
+        #
+        # El tres sale de su planilla. En sus doce semanas transcritas hay dos
+        # que llevan dos días de 20'+: el mes 2 semana 7 (martes y viernes) y el
+        # mes 3 semana 12 (martes y viernes). Las dos veces, hueco de tres. No
+        # hay ninguna con hueco de dos.
+        #
+        # La excepción es el mes 2 semana 8 —24', 25', 30' y 24' de martes a
+        # viernes— pero esa es una semana de cierre de ciclo a propósito, no la
+        # forma normal de una semana. El generador no la produce y no debería
+        # producirla por accidente.
+        largos = [i for i, d in enumerate(doms) if d == 'aeróbico']
+        if any(b - a < 3 for a, b in zip(largos, largos[1:])): continue
 
         semana, ok = [], True
         # El "ayer" del lunes es el último día generado de este mes; solo la
