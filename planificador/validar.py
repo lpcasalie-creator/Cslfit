@@ -23,13 +23,28 @@ from leer_wod import leer
 # altera un solo hallazgo, y deja de haber dos catálogos donde hay uno.
 wb = openpyxl.load_workbook('CSL-Fit_Catalogo_Completo.xlsx', data_only=True)
 BASE, CAD1, CAD2, TECNICO = {}, {}, {}, set()
-for r in wb['Movimientos'].iter_rows(min_row=2, values_only=True):
-    if not r[0]: continue
-    nombre, base, _pat, c1, c2 = r[0], r[1], r[2], r[3], r[4]
-    BASE[nombre] = base or nombre
-    CAD1[base or nombre] = c1 or ''
-    CAD2[base or nombre] = c2 or ''
-    if str(r[7] or '').strip().lower() in ('sí', 'si'): TECNICO.add(base or nombre)
+# Varias filas comparten `Movimiento base`: Ring Row, Ring Row lastrado y Ring
+# Row vertical (pies elevados) son tres filas con base "Ring Row". Antes las
+# cadenas se asignaban en el lazo y ganaba la ÚLTIMA fila por orden de planilla,
+# lo que es una trampa: editar la cadena de una variante le cambiaba la cadena
+# al movimiento base sin que nadie lo pidiera, y en silencio.
+#
+# Ahora manda la fila que ES la base, y una variante solo rellena si la base no
+# tiene cadena propia. Hoy esto cambia UN movimiento —Single-Arm DB Press, cuya
+# fila base está vacía y cuya variante dice "empuje vertical"— y el
+# planificador no lo usa. El cambio no es por lo que arregla hoy: es para que
+# editar una variante deje de poder corromper su base.
+_filas = [r for r in wb['Movimientos'].iter_rows(min_row=2, values_only=True) if r[0]]
+for r in _filas:
+    BASE[r[0]] = r[1] or r[0]
+    if str(r[7] or '').strip().lower() in ('sí', 'si'): TECNICO.add(r[1] or r[0])
+for r in _filas:
+    clave = r[1] or r[0]
+    propia = (r[0] == clave)          # la fila del movimiento base, no una variante
+    if propia and r[3]:
+        CAD1[clave], CAD2[clave] = r[3], r[4] or ''
+    elif not CAD1.get(clave):
+        CAD1[clave], CAD2[clave] = r[3] or '', r[4] or ''
 
 def base_de(m): return BASE.get(m, m)
 def cadenas(m):
