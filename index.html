@@ -68,6 +68,19 @@
      arriba y se veían con el fondo blanco por defecto del navegador, rompiendo
      el tema oscuro en login/registro, fecha de InBody y fecha de asignación. */
   input[type=date]{ color-scheme: dark; }
+  /* Fix (auditoría visual): el <select> heredaba fondo/borde oscuro de la
+     regla de arriba, pero la flecha desplegable seguía siendo la del sistema
+     operativo (gris clara, a veces blanca) — el único control de toda la app
+     que se veía "del navegador" en vez de la marca. appearance:none + una
+     flecha propia en lima, dibujada con SVG en el background (sin ícono de
+     librería externa, mismo criterio del resto de esta pasada). */
+  select{
+    appearance:none; -webkit-appearance:none; -moz-appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23CCFF00' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 12px center; background-size:16px;
+    padding-right:38px;
+  }
+  select::-ms-expand{ display:none; }
   input[type=file]{
     width:100%; background:#0f0f0f; border:1px solid var(--border); color:var(--gray);
     padding:10px 12px; border-radius:8px; font-size:14px; font-family:inherit;
@@ -449,11 +462,25 @@
         <button class="btn small secondary has-icon" onclick="showView('scores')"><svg class="btnicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 4h12v3a6 6 0 0 1-12 0V4z"/><path d="M6 5H3a3 3 0 0 0 3 3"/><path d="M18 5h3a3 3 0 0 1-3 3"/><path d="M12 13v4"/><path d="M8 21h8"/><path d="M9 17h6v4H9z"/></svg>Scores</button>
       </div>
     </div>
-    <div class="card">
+    <div class="card" id="iosInstallTip">
       <h3>¿Usas iPhone?</h3>
       <p class="muted">Toca el botón <b>Compartir</b> (el cuadrado con la flecha hacia arriba) en Safari, y luego <b>"Agregar a pantalla de inicio"</b>. Así te queda como una app normal.</p>
     </div>
   </section>
+  <script>
+    // Fix (auditoría visual/UX): esta tarjeta se mostraba SIEMPRE, a cualquier
+    // usuario (Android, desktop, o iPhone que YA la instaló) — el único de los
+    // 6 enfoques permanentes del Home sin ninguna condición real detrás.
+    // iOS no tiene evento beforeinstallprompt (por eso este card manual existe
+    // aparte del installBanner de arriba, que sí es automático) — pero si el
+    // navegador no es iOS, o si ya corre en modo standalone (ya instalada), no
+    // tiene ningún sentido seguir mostrándola para siempre.
+    (function(){
+      const esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      const yaInstalada = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+      if(!esIOS || yaInstalada) document.getElementById('iosInstallTip').style.display = 'none';
+    })();
+  </script>
 
   <!-- CONFIGURACIÓN — Fase UX-01 (separación Home/Ajustes): se llega por el ícono ⚙ del header -->
   <section id="settings" class="view">
