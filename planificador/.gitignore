@@ -1,2 +1,8 @@
 __pycache__/
 *.pyc
+
+# Planillas generadas: salen de excel.py y transicion.py con una semilla, así
+# que se regeneran cuando haga falta. Los catálogos .xlsx sí van versionados
+# porque son datos de entrada, no salida.
+octubre-*.xlsx
+octubre-*.html
