@@ -1936,6 +1936,17 @@ function drawLineChart(canvasId, points, opts){
   ctx.clearRect(0,0,W,H);
 
   if(!points.length){
+    // Fix (auditoría visual): antes era solo texto gris flotando en un canvas
+    // vacío — se agrega el mismo ícono de tendencia que ya usa el resto de la
+    // app (nav RM), dibujado a mano en el canvas (sin librería), arriba del
+    // texto, para que el estado vacío tenga la misma presencia visual que el
+    // resto de la interfaz en vez de sentirse roto/incompleto.
+    ctx.save();
+    ctx.translate(W/2-11, H/2-30);
+    ctx.strokeStyle = '#555'; ctx.lineWidth = 2; ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.beginPath(); ctx.moveTo(0,17); ctx.lineTo(6,11); ctx.lineTo(10,15); ctx.lineTo(20,5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(14,5); ctx.lineTo(20,5); ctx.lineTo(20,11); ctx.stroke();
+    ctx.restore();
     ctx.fillStyle = '#555'; ctx.font = '13px sans-serif'; ctx.textAlign='center';
     ctx.fillText('Sin datos suficientes todavía', W/2, H/2);
     return;
