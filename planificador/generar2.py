@@ -334,6 +334,40 @@ DISTANCIA_LARGA = {m for m in ('Run', 'Row', 'Bike', 'Ski', 'Shuttle Run',
                                'Farmer Carry', 'Machine') if _puede_crecer(m)}
 
 
+# Lo que el ALUMNO registra como "otra vez esto". Todo menos el relleno: nadie
+# dice "los jueves toca Run", pero sí "los lunes toca Wall Walk".
+RELLENO_DE_DIA = MONOSTRUCTURAL | {'Air Squat', 'Sit-up', 'Burpee'}
+NOTORIOS = {m for m in POOL if m not in RELLENO_DE_DIA}
+
+
+# Row, Bike, Ski y Run van al PRINCIPIO o al FINAL del WOD, nunca al medio.
+# Regla suya, y sus planillas ya la cumplían sin que estuviera escrita: de 28
+# WODs de tres o más movimientos con uno de estos cuatro, 24 lo tienen en un
+# extremo. Las cuatro excepciones son dos chippers, una escalera y un rounds.
+#
+# OJO con el conjunto: son esos cuatro y no MONOSTRUCTURAL entero. Contando
+# también Double under, Machine y Shuttle Run, las excepciones suben de 4 a 9
+# — o sea que a esos tres sí los pone al medio. Él dijo "row/bike/ski/run" y
+# la medición le da la razón.
+#
+# Al principio o al final da casi lo mismo: su reparto es 13 y 10.
+CARDIO_A_LOS_EXTREMOS = {'Run', 'Row', 'Bike', 'Ski'}
+
+
+def _a_los_extremos(rnd, movs):
+    if len(movs) < 3:
+        return movs
+    cardio = [m for m in movs if m in CARDIO_A_LOS_EXTREMOS]
+    if not cardio:
+        return movs
+    resto = [m for m in movs if m not in CARDIO_A_LOS_EXTREMOS]
+    if len(cardio) == 1:
+        return cardio + resto if rnd.random() < 0.55 else resto + cardio
+    # Dos o más: uno abre y el resto cierra, que es lo único que los deja a
+    # todos en un extremo.
+    return cardio[:1] + resto + cardio[1:]
+
+
 def arma_wod(rnd, categoria, prohibidos, cuantos_total, cap=None,
              exigir_distancia=False, dominio=None):
     """Un movimiento de la categoría del día, el resto peso corporal."""
@@ -399,7 +433,9 @@ def arma_wod(rnd, categoria, prohibidos, cuantos_total, cap=None,
     for m in relleno:
         if len(elegidos) >= cuantos_total: break
         if cabe(m): poner(m)
-    return elegidos if len(elegidos) >= cuantos_total else None
+    if len(elegidos) < cuantos_total:
+        return None
+    return _a_los_extremos(rnd, elegidos)
 
 # Cuántos días de cada dominio lleva la semana. NO es fijo, y tenerlo fijo era
 # un problema que no se veía hasta mirar el mes entero: con 3 glucolíticos
@@ -491,27 +527,35 @@ def proponer(intentos=6000, semilla=None, previas=None, composicion=None):
             # casillero —y él más que la máquina— así que la regla es solo
             # para este grupo: un Run los jueves no se nota, un Wall Walk los
             # lunes se vuelve "los lunes toca Wall Walk".
-            # Solo contra la SEMANA ANTERIOR, que es la versión que él
-            # eligió de las tres medidas:
+            # Nada NOTORIO vuelve al mismo día que la semana pasada.
             #
-            #                        repite día  seguidas  hallazgos/mes
-            #   sin regla                0,80      0,60        0,23
-            #   solo semanas seguidas    0,42      0,00        0,33   ← ésta
-            #   mes entero               0,00      0,00        0,47
-            #   él, en sus 3 meses       0,00      0,00          —
+            # La regla es suya, dicha así: "los alumnos dirán ohhh, o sea
+            # todos los lunes el mismo movimiento; se puede repetir pero en
+            # otros días". No le molesta la repetición, le molesta el
+            # CASILLERO FIJO. Por eso mira solo la semana anterior y por eso
+            # deja fuera el relleno: nadie dice "los jueves toca Run".
             #
-            # Lo que sube es "dominios consecutivos": al sacarle tres
-            # movimientos de gimnasia al surtido, algunos días no llegan a la
-            # duración pedida y caen al dominio de al lado. Probé dejarlo como
-            # preferencia blanda con segunda pasada y no cambió nada — el
-            # generador casi nunca se queda sin con qué armar el día, solo
-            # elige otra cosa. El costo viene de achicar el surtido, no de la
-            # dureza de la regla.
+            # Y acá me equivoqué prediciendo. Primero la puse solo para los
+            # tres gimnásticos de alta destreza y salió cara —0,33 hallazgos
+            # por mes contra 0,23 sin regla— porque bloquear tres movimientos
+            # cuatro semanas seguidas angosta el surtido de gimnasia y los
+            # días dejan de llegar a su dominio. Supuse que extenderla a los
+            # 36 notorios sería peor todavía. Es al revés:
+            #
+            #                          repite  seguidas  hallazgos/mes
+            #   sin regla                0,80    0,60        0,23
+            #   solo alta destreza       0,42    0,00        0,33
+            #   todo lo notorio          0,67    0,00        0,13   ← ésta
+            #
+            # Repartida entre 36 movimientos, a ninguno le aprieta: cada día
+            # pierde un puñado de candidatos en vez de quedarse sin gimnasia
+            # dura. Y como obliga a variar, los días aterrizan MÁS seguido en
+            # el dominio que se les pidió. Sale más barata que no tenerla.
             laborales_previas = [d for d in previas if d['cat'] != 'PARTNER']
             semana_actual = len(laborales_previas) // 5
             blandos = {m for j, d in enumerate(laborales_previas)
                        if d['dia'] == dia and j // 5 == semana_actual - 1
-                       for m in d['movs']} & ALTA_DESTREZA
+                       for m in d['movs']} & NOTORIOS
             if box >= 2: prohibidos |= {m for m in POOL if 'Box Jump' in m}
             cuantos = rnd.choice(CUANTOS_MOVS[doms[i]])
             movs = arma_wod(rnd, plan[dia], prohibidos | blandos, cuantos,

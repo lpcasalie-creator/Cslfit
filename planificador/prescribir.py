@@ -73,6 +73,19 @@ for _m, _p in (('Back Squat', (155, 105, 'lb')), ('Clean and Jerk', (135, 95, 'l
                ('Thruster', (95, 65, 'lb'))):
     PESOS.setdefault(_m, [_p])
 
+# Rangos que él corrigió a mano, por encima de lo medido.
+#
+# DOUBLE UNDER: 30 a 100 por ronda. Decisión suya del 27 de septiembre, y va
+# CONTRA sus propias planillas: lo que está transcrito es [15, 15, 20, 40, 40,
+# 40, 50]. Vio los 15 en un mes generado y dijo que es demasiado poco — o sea
+# que los dos 15 de su historia son los que él mismo está corrigiendo, no un
+# error de la máquina. El 20 también queda fuera del rango nuevo.
+REPS_A_MANO = {
+    'Double under': [30, 40, 50, 60, 75, 100],
+}
+for _m, _v in REPS_A_MANO.items():
+    REPS[_m] = list(_v)
+
 # Respaldo: movimientos cuyo único dato histórico viene de un esquema
 # (21-15-9). Se guarda la serie más chica del esquema, que es lo que él
 # usaría como reps por ronda.
@@ -103,12 +116,26 @@ for _s, _f, _fa, _jor, _sab in MES:
 # ski o bike, y puede ser largo".
 TECHO.update({'Run': 2000, 'Row': 3000, 'Bike': 3000, 'Ski': 3000,
               'Shuttle Run': 800, 'Farmer Carry': 600})
+# El techo TOTAL del Double under tiene que dar espacio al rango POR RONDA.
+# Su regla es 30-100 por ronda; el techo estaba en 60, su máximo medido en un
+# WOD entero. Con 5 rondas el ajustador hacía 60÷5 = 12, el piso lo subía a 30,
+# y TODO salía en 30: de 53 apariciones, 49 eran exactamente 30.
+#
+# 300 es lo que deja el rango entero utilizable sin inventar más:
+#     3 rondas -> hasta 100 por ronda   4 -> 75   5 -> 60
+TECHO['Double under'] = 300
+TECHO['Single Under'] = 600          # su escala es 2x
 
 # Dos techos distintos: cuánto se acumula en todo el WOD, y cuánto se hace DE
 # UNA VEZ. Su pieza individual más larga es el 1000m Row del "JACKIE" MOD;
 # 2000m corridos de un tirón no están en ninguna planilla suya.
 TECHO_POR_VEZ = {'Run': 1000, 'Row': 1000, 'Bike': 1000, 'Ski': 1000,
-                 'Farmer Carry': 200, 'Shuttle Run': 400}
+                 'Farmer Carry': 200, 'Shuttle Run': 400,
+                 # El 100 del Double under es el techo POR RONDA de su regla,
+                 # y hace falta acá además del total: sin esto el chipper —que
+                 # es de una sola ronda y escala las reps hasta llenar el
+                 # tiempo— llegaba a 200 y 300 de una sentada.
+                 'Double under': 100, 'Single Under': 200}
 
 # Los cinco clásicos se quedan con el grueso: su propio reparto es FOR TIME
 # 27% · AMRAP 23% · ROUNDS 22% · EMOM 13% · CHIPPER 7%, y los formatos nuevos
@@ -175,7 +202,8 @@ def linea_de(rnd, mov, factor=1.0, emom=False):
         # En un EMOM el trabajo tiene que caber en el minuto: 500m de remo son
         # casi dos. Sus EMOM reales solo usan 200m Run.
         if emom: opciones = [d for d in opciones if d <= 200] or [min(opciones)]
-        return f'· {rnd.choice(opciones)}m {mov}'
+        d = rnd.choice(opciones)
+        return f'· {d}m {mov}{_pasadas(mov, d)}'
     n = reps_de(rnd, mov, factor)
     peso = peso_de(mov)
     txt = f'· {n} {mov}' if n else f'· {mov}'
@@ -232,6 +260,19 @@ def metros_de(mov):
 # 10 de cada 240 días. Dos, la palabra: "10 Machine" no dice qué son esos
 # diez. Su planilla siempre escribe "Cal".
 SOLO_CALORIAS = {m for m in CAL if not DIST.get(m) and m not in DISTANCIAS}
+
+
+# El Shuttle Run se corre en pasadas de 10 metros, y su planilla lo escribe
+# solo como "100m Shuttle Run" — que no le dice al coach cuántas pasadas
+# montar. Se escribe con el detalle: "100m Shuttle Run (10 x 10m)".
+TRAMO_SHUTTLE = 10
+
+
+def _pasadas(mov, metros):
+    """'(10 x 10m)' para el Shuttle Run, vacío para el resto."""
+    if mov != 'Shuttle Run' or metros % TRAMO_SHUTTLE:
+        return ''
+    return f' ({metros // TRAMO_SHUTTLE} x {TRAMO_SHUTTLE}m)'
 
 
 def _distancia_redonda(mov, metros):
@@ -393,7 +434,7 @@ def escribir(rnd, dia, evitar=()):
         if m in ES_DISTANCIA:
             d = n
             if emom and d > 200: d = 200
-            return f'· {d}m {m}'
+            return f'· {d}m {m}{_pasadas(m, d)}'
         peso = peso_de(m)
         base = ('· ' + m if sin_reps else f'· {n} {m}') + (f' ({peso})' if peso else '')
         # La línea (Esc) va solo en los movimientos de alta destreza, que es
