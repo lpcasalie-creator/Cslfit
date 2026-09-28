@@ -5797,7 +5797,15 @@ const CROSSFIT_DURATION_BONUS = { '90': 1.4, '120': 1.75 };
 // sean 2 progresiones del mismo movimiento (ej. 2 variantes de Muscle-up).
 function _crossfit17a2FamiliaSkill(name){
   if(/Muscle-up/i.test(name)) return 'muscle-up';
-  if(/HS|Handstand|HSPU/i.test(name)) return 'handstand';
+  // Fix (auditoría, hallazgo del usuario: "varios días seguidos handstand
+  // push-ups"): "Wall Walk" (y sus variantes "Wall Walk parcial"/"completo")
+  // y "Pike Walk" son progresiones reales de hándstand, pero no contienen
+  // "HS"/"Handstand"/"HSPU" en el nombre — el chequeo de familia (ni el de
+  // "no repetir 2 el mismo día" ni la memoria semanal nueva) nunca los
+  // reconocía como la misma familia. Confirmado en la práctica: "Wall Walk" +
+  // "Kipping HSPU drill" servidos en el mismo día, sin que el chequeo
+  // existente lo detectara.
+  if(/HS|Handstand|HSPU|Wall Walk|Pike Walk/i.test(name)) return 'handstand';
   return 'otra';
 }
 
@@ -6512,7 +6520,23 @@ function _crossfitDay(offset){
       lineasFuerza.push(_crossfit17a2PrescribirRectas(movFuerzaAgregada, opts, wi, '5-6'));
 
       const poolSkillAgregado = _crossfitSkillPoolAmplio(opts);
-      const movSkillAgregado = _crossfit17a2Pick(poolSkillAgregado, wi, ti + 99 + regenSeedDia*19, opts, 'skill');
+      // Fix (auditoría, hallazgo del usuario: "varios días seguidos handstand
+      // push-ups"): este pick único era el único de los 3 puntos de selección
+      // de Skill que ni consultaba ni alimentaba opts._usedSkillFamilias (las
+      // otras 2 ramas ya lo hacen, ver comentario junto a esDiaSkillPre más
+      // abajo) — un día de motor aeróbico podía repetir la familia sin que el
+      // resto de la semana se enterara, dejando pasar hasta 3 días de hándstand
+      // en la misma semana en simulación (confirmado en 5 días/semana).
+      let movSkillAgregado, intentoMono = 0;
+      do {
+        movSkillAgregado = _crossfit17a2Pick(poolSkillAgregado, wi, ti + 99 + intentoMono*7 + regenSeedDia*19, opts, 'skill');
+        intentoMono++;
+      } while(_crossfit17a2FamiliaSkill(movSkillAgregado) !== 'otra' && opts._usedSkillFamilias
+        && opts._usedSkillFamilias.has(_crossfit17a2FamiliaSkill(movSkillAgregado)) && intentoMono < 20);
+      if(opts._usedSkillFamilias){
+        const famMono = _crossfit17a2FamiliaSkill(movSkillAgregado);
+        if(famMono !== 'otra') opts._usedSkillFamilias.add(famMono);
+      }
       movsSkill.push(movSkillAgregado);
       lineasSkill.push(_crossfit17a2PrescribirSkill(movSkillAgregado, opts, wi));
     } else if(esDiaSkillPre){
@@ -6527,7 +6551,26 @@ function _crossfitDay(offset){
       while(movsSkill.length < nSkillNativo && intento < 20){
         const m = _crossfit17a2Pick(poolSkillNativo, wi, ti + intento*7 + regenSeedDia*19, opts, src.key);
         const fam = _crossfit17a2FamiliaSkill(m);
-        if(!familiasUsadas.has(fam) || movsSkill.length===0){ movsSkill.push(m); familiasUsadas.add(fam); }
+        // Fix (auditoría, hallazgo del usuario: "varios días seguidos handstand
+        // push-ups"): familiasUsadas solo evitaba 2 movimientos de la misma
+        // familia (handstand/muscle-up) EL MISMO día — nada impedía que esa
+        // misma familia volviera a salir el día siguiente o el resto de la
+        // semana, y como cada día casi siempre trae solo 1 Skill, el escape
+        // "movsSkill.length===0" (primer pick del día, siempre aceptado) dejaba
+        // el chequeo de familia inerte en la práctica. opts._usedSkillFamilias
+        // es memoria SEMANAL (se resetea junto con opts._used en
+        // autoGenerateProgram) — mismo criterio de "nunca bloquear, solo
+        // desplazar" que el resto del motor: 'otra' (los ~14 movimientos que no
+        // son handstand/muscle-up) queda afuera del chequeo semanal a propósito,
+        // para no tratar como "familia repetida" un conjunto tan amplio y
+        // heterogéneo. Confirmado por simulación: handstand-family aparecía en
+        // 7/16 días de un programa real de 4 semanas, incluyendo 3 días
+        // seguidos en la semana 1.
+        const familiaRepiteSemana = fam !== 'otra' && opts._usedSkillFamilias && opts._usedSkillFamilias.has(fam);
+        if((!familiasUsadas.has(fam) && !familiaRepiteSemana) || intento === 19){
+          movsSkill.push(m); familiasUsadas.add(fam);
+          if(fam !== 'otra' && opts._usedSkillFamilias) opts._usedSkillFamilias.add(fam);
+        }
         intento++;
       }
       movsSkill.forEach(m=>lineasSkill.push(_crossfit17a2PrescribirSkill(m, opts, wi)));
@@ -6587,7 +6630,13 @@ function _crossfitDay(offset){
       while(movsSkill.length < nSkillAgregado && intentoSkillAgregado < 20){
         const m = _crossfit17a2Pick(poolSkillAgregado, wi, ti + 99 + intentoSkillAgregado*7 + regenSeedDia*19, opts, 'skill');
         const fam = _crossfit17a2FamiliaSkill(m);
-        if(!familiasSkillAgregado.has(fam) || movsSkill.length===0){ movsSkill.push(m); familiasSkillAgregado.add(fam); }
+        // Fix (auditoría, mismo hallazgo que la rama nativa de arriba — ver ese
+        // comentario): memoria semanal de familia, 'otra' excluida a propósito.
+        const familiaRepiteSemana = fam !== 'otra' && opts._usedSkillFamilias && opts._usedSkillFamilias.has(fam);
+        if((!familiasSkillAgregado.has(fam) && !familiaRepiteSemana) || intentoSkillAgregado === 19){
+          movsSkill.push(m); familiasSkillAgregado.add(fam);
+          if(fam !== 'otra' && opts._usedSkillFamilias) opts._usedSkillFamilias.add(fam);
+        }
         intentoSkillAgregado++;
       }
       movsSkill.forEach(m=>lineasSkill.push(_crossfit17a2PrescribirSkill(m, opts, wi)));
@@ -7300,6 +7349,12 @@ function autoGenerateProgram(){
     opts._recentWodMovs = (focus==='crossfit')
       ? new Set(_crossfit26RecentWodMovs.flatMap(s=>[...s]))
       : null;
+    // Fix (auditoría, hallazgo del usuario: "varios días seguidos handstand
+    // push-ups"): memoria semanal de FAMILIA de Skill (handstand/muscle-up),
+    // separada de _used (que solo evita repetir el mismo movimiento exacto) —
+    // se resetea cada semana igual que _used. Ver _crossfitDay() donde se
+    // consulta y se alimenta.
+    opts._usedSkillFamilias = (focus==='crossfit') ? new Set() : null;
     const _crossfit26EstaSemanaMovs = new Set();
     templates.forEach((tmpl, ti)=>{
       const dayIdx = dayIndices[ti];
