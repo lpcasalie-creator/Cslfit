@@ -443,14 +443,26 @@ def arma_wod(rnd, categoria, prohibidos, cuantos_total, cap=None,
 # son 🟡x🟡y🟡 con {x,y} = {🟢,🔴}. Dos formas. En 160 semanas generadas
 # salieron exactamente esas dos el 98% de las veces — el mes se leía a máquina.
 #
-# Sus cuatro semanas de septiembre son 3-1-1, 2-2-1, 3-2-0 y 3-2-0: la
-# composición cambia todas las semanas. Estas cuatro suman 6-10-4 en el mes,
-# que es el 30/50/20 que dice la leyenda de su planilla del mes 2.
+# ESTO ES UNA DECISIÓN SUYA, NO UNA MEDICIÓN. Sus tres meses transcritos no
+# coinciden entre ellos ni con la leyenda de su propia planilla:
+#
+#     Mes 2        8-4-8    40/20/40     (su leyenda dice 30/50/20)
+#     Mes 3        8-7-5    40/35/25
+#     Septiembre  11-7-2    55/35/10
+#
+# No hay distribución medida que defender: son tres meses distintos. Él eligió
+# tercios — "33 c/u es lo correcto para mantener el equilibrio". Veinte días
+# no se dividen en tres, así que el mes queda 7-7-6 (35/35/30) y el que se come
+# el redondeo hacia abajo es el aeróbico, porque es el día más caro: cap de
+# 20-24' y solo 12' de Skill, contra 20-22' de Skill en un día fosfágeno.
+#
+# Las formas semanales (2-2-1, 2-1-2, 1-2-2) sí salen de su planilla: son tres
+# de las seis que aparecen en esos tres meses, y 2-2-1 es la más repetida.
 COMPOSICIONES = [
- ['fosfágeno', 'glucolítico', 'glucolítico', 'glucolítico', 'aeróbico'],
  ['fosfágeno', 'fosfágeno', 'glucolítico', 'glucolítico', 'aeróbico'],
+ ['fosfágeno', 'fosfágeno', 'glucolítico', 'aeróbico', 'aeróbico'],
+ ['fosfágeno', 'glucolítico', 'glucolítico', 'aeróbico', 'aeróbico'],
  ['fosfágeno', 'fosfágeno', 'glucolítico', 'glucolítico', 'aeróbico'],
- ['fosfágeno', 'glucolítico', 'glucolítico', 'glucolítico', 'aeróbico'],
 ]
 
 
@@ -488,6 +500,22 @@ def proponer(intentos=6000, semilla=None, previas=None, composicion=None):
         doms = list(composicion)
         rnd.shuffle(doms)
         if any(doms[i] == doms[i+1] for i in range(4)): continue
+        # Dos días largos en la misma semana van SEPARADOS POR TRES. No basta
+        # con que no estén pegados: un lunes de 24' y un miércoles de 24' no son
+        # días consecutivos para el validador y aun así son dos días muy largos
+        # muy seguidos —sus palabras, mirando la semana 18 de octubre.
+        #
+        # El tres sale de su planilla. En sus doce semanas transcritas hay dos
+        # que llevan dos días de 20'+: el mes 2 semana 7 (martes y viernes) y el
+        # mes 3 semana 12 (martes y viernes). Las dos veces, hueco de tres. No
+        # hay ninguna con hueco de dos.
+        #
+        # La excepción es el mes 2 semana 8 —24', 25', 30' y 24' de martes a
+        # viernes— pero esa es una semana de cierre de ciclo a propósito, no la
+        # forma normal de una semana. El generador no la produce y no debería
+        # producirla por accidente.
+        largos = [i for i, d in enumerate(doms) if d == 'aeróbico']
+        if any(b - a < 3 for a, b in zip(largos, largos[1:])): continue
 
         semana, ok = [], True
         # El "ayer" del lunes es el último día generado de este mes; solo la

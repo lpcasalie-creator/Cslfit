@@ -172,7 +172,7 @@ def construir(semanas, destino):
                 '| PROG. = Progresión | (Rx) = Rx | (Esc) = Escala',
                 NEGRO, GRIS, 9, False, centro=True)
     _franja(ws, f, "🟢 Corto <14'  ·  🟡 Medio 14-19'  ·  🔴 Largo 20'+  ·  "
-            'Objetivo 30/50/20', NEGRO, GRIS, 9, False, centro=True)
+            'Objetivo 33/33/33', NEGRO, GRIS, 9, False, centro=True)
 
     ws.freeze_panes = 'A4'          # el encabezado y los días quedan fijos
     ws.page_setup.orientation = 'landscape'
