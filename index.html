@@ -437,8 +437,16 @@
     <div class="brand" id="appHeaderBrand">CSL <span>TRAINING</span></div>
     <div class="sub" id="appHeaderSub">Coach Luis Casali — CF-L3 · CCFT · USAW L1 · HYROX Official Coach</div>
   </div>
+  <!-- Fix (auditoría visual): engranaje de texto unicode (⚙), visible en el
+       header de TODAS las pantallas — el ícono de mayor visibilidad de toda
+       la app renderizaba distinto según fuente/SO en vez de un SVG propio. -->
   <button id="settingsGearBtn" onclick="showView('settings')" aria-label="Ajustes"
-    style="background:none; border:none; color:var(--gray-dim); font-size:22px; cursor:pointer; padding:6px;">⚙</button>
+    style="background:none; border:none; color:var(--gray-dim); cursor:pointer; padding:6px;">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false" style="fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round;">
+      <circle cx="12" cy="12" r="3.2"/>
+      <path d="M19.4 13.5c.1-.5.1-1 0-1.5l1.9-1.5-1.9-3.3-2.2.9c-.4-.3-.8-.6-1.3-.8L15.5 5h-3.8l-.4 2.3c-.5.2-.9.5-1.3.8l-2.2-.9L6 10.5l1.9 1.5c-.1.5-.1 1 0 1.5L6 15l1.9 3.3 2.2-.9c.4.3.8.6 1.3.8l.4 2.3h3.8l.4-2.3c.5-.2.9-.5 1.3-.8l2.2.9 1.9-3.3-1.9-1.5z"/>
+    </svg>
+  </button>
 </header>
 
 <div id="installBanner" style="display:none; align-items:center; justify-content:space-between; gap:10px; background:#151a05; border-bottom:1px solid #33400a; padding:10px 16px;">
@@ -721,7 +729,10 @@
       <h2>Composición Corporal</h2>
       <p class="muted">Registra los datos de tu InBody (u otra báscula de bioimpedancia). Deja en blanco lo que no tengas.</p>
       <input type="file" accept="image/*" capture="environment" id="bodyPhotoInput" style="display:none;" onchange="scanInbodyPhoto(this.files[0])">
-      <button class="btn secondary" style="width:100%;margin-bottom:10px;" onclick="document.getElementById('bodyPhotoInput').click()" id="bodyPhotoBtn">📷 Escanear foto de InBody</button>
+      <!-- Fix (auditoría visual): único botón de toda la app que usaba un
+           emoji (📷) como ícono — el resto ya usa el mismo lenguaje de SVG en
+           línea de esta pasada (renderiza distinto según SO/fuente, un SVG no). -->
+      <button class="btn secondary has-icon" style="width:100%;margin-bottom:10px;" onclick="document.getElementById('bodyPhotoInput').click()" id="bodyPhotoBtn"><svg class="btnicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="14" r="3.5"/></svg>Escanear foto de InBody</button>
       <p class="muted" id="bodyPhotoStatus" style="display:none;"></p>
       <label>Fecha de la medición</label>
       <input type="date" id="bodyDate">
@@ -7123,7 +7134,7 @@ function renderDayOrderPickers(){
   dayNames.forEach((label, i)=>{
     html += `<label style="margin-top:6px;">${label}</label>
       <select id="dayOrder_${i}" onchange="updateDomainSummary()">
-        ${labels.map((l, idx)=>`<option value="${idx}" ${idx===i?'selected':''}>${DOMAIN_ICON[domains[idx]]} ${l}</option>`).join('')}
+        ${labels.map((l, idx)=>`<option value="${idx}" ${idx===i?'selected':''}>${DOMAIN_ICON[domains[idx]]} ${l} (${domains[idx]})</option>`).join('')}
       </select>`;
   });
   html += `<p id="domainSummary" style="font-size:12px; margin-top:8px; color:var(--gray-dim);"></p>
