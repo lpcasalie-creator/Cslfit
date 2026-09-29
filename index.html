@@ -4643,7 +4643,7 @@ function _crossfitCompletionFormHtml(parsed, keyPrefix){
       : `Chipper (cap ${parsed.wodCapMinutes}')`;
     resultadoHtml = `
       <label style="font-size:11px;">${label} — ¿terminaste antes del cap?</label>
-      <select id="${keyPrefix}_finished" style="font-size:12px; padding:6px;" onchange="_crossfitToggleFinishedFields('${keyPrefix}', this.value)">
+      <select id="${keyPrefix}_finished" style="font-size:12px; padding:6px 38px 6px 6px;" onchange="_crossfitToggleFinishedFields('${keyPrefix}', this.value)">
         <option value="si">Sí — anota el tiempo</option>
         <option value="no">No — quedé en el cap</option>
       </select>
@@ -8589,8 +8589,6 @@ async function renderAthletesList(){
   const rowsHtml = withPayment.map(a=>{
     const asg = map[a.id];
     const info = asg ? `${escapeHtml(asg.programs.name)} · desde ${asg.start_date}` : 'Sin programa asignado';
-    const planLabel = a.plan === 'coached' ? 'Con programación' : 'Solo seguimiento';
-    const planColor = a.plan === 'coached' ? 'var(--lime)' : 'var(--gray-dim)';
     const joinedDate = a.created_at ? new Date(a.created_at).toLocaleDateString('es-CL') : '—';
 
     let paymentInfo, paymentColor;
@@ -8611,7 +8609,6 @@ async function renderAthletesList(){
       <div class="athlete-row" style="border:none; padding:0;">
         <div>
           <b>${a.full_name || a.email}</b>
-          <span class="badge" style="background:transparent; border:1px solid ${planColor}; color:${planColor}; margin-left:4px;">${planLabel}</span>
           <br><span class="muted" style="font-size:12px;">Ingresó: ${joinedDate} · ${info}</span>
           <br><span style="font-size:12px; color:${paymentColor};">${paymentInfo}</span>
           <br><span style="font-size:12px; color:${activityColor};">${activityInfo}</span>
@@ -8622,7 +8619,7 @@ async function renderAthletesList(){
         </span>
       </div>
       <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-        <select style="width:auto; font-size:11px; padding:4px 8px;" onchange="changeAthletePlan('${a.id}', this.value)">
+        <select style="width:auto; font-size:11px; padding:4px 38px 4px 8px; border-color:var(--lime); color:var(--lime);" onchange="changeAthletePlan('${a.id}', this.value)">
           <option value="tracking" ${a.plan!=='coached'?'selected':''}>Solo seguimiento</option>
           <option value="coached" ${a.plan==='coached'?'selected':''}>Con programación</option>
         </select>
