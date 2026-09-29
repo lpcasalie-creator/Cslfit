@@ -1151,9 +1151,16 @@
       <label>Video</label>
       <input type="file" id="barVideoInput" accept="video/*" onchange="loadBarVideo(event)">
 
-      <div style="position:relative; margin-top:10px; max-width:100%; background:#000;">
+      <div style="position:relative; margin-top:10px; max-width:100%; min-height:160px; background:#000;">
         <video id="barVideo" style="width:100%; display:block;" muted playsinline></video>
         <canvas id="barCanvas" style="position:absolute; top:0; left:0; width:100%; touch-action:none;"></canvas>
+        <!-- Fix (auditoría visual): esta caja quedaba negra y vacía sin ninguna
+             pista hasta que se cargaba un video — se agrega un placeholder que
+             se saca apenas el coach elige un archivo (ver loadBarVideo()). -->
+        <div id="barVideoPlaceholder" class="empty-state" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0;">
+          <svg class="empty-state-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l6 3.5-6 3.5v-7z" fill="var(--gray-dim)" stroke="none"/></svg>
+          <p class="muted">El video aparece acá</p>
+        </div>
       </div>
 
       <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
@@ -9629,6 +9636,7 @@ function loadBarVideo(e){
   const file = e.target.files[0];
   if(!file) return;
   const url = URL.createObjectURL(file);
+  document.getElementById('barVideoPlaceholder').style.display = 'none';
   barVideoEl = document.getElementById('barVideo');
   barCtx = null; // se re-arma abajo cuando el video esté listo
   document.getElementById('barCalibStatus').textContent = 'Cargando video...';
