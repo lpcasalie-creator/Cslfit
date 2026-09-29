@@ -1678,8 +1678,31 @@ function renderHomeSessionCompact(){
   const card = document.getElementById('homeSessionCard');
   const el = document.getElementById('homeSessionCompact');
   const r = computeTodayProgramEntry();
-  if(!r || r.status !== 'ok' || isDayEmpty(r.content)){
-    card.style.display = 'none';
+  // Fix (auditoría visual, pedido del coach: "la primera visión de los
+  // alumnos al abrir la app"): esta tarjeta se ocultaba por completo para
+  // CUALQUIER caso que no fuera "programa activo con contenido hoy" — un
+  // atleta nuevo sin programa asignado todavía (el caso más común el primer
+  // día) no veía ninguna explicación, solo un hueco sin la tarjeta. Los
+  // mensajes ya existen en renderActiveProgPreview() para la pestaña
+  // Programación — se reutilizan acá en vez de duplicar texto nuevo.
+  if(!r){
+    card.style.display = 'block';
+    el.innerHTML = `<p class="muted">Todavía no tienes un programa asignado — tu coach te va a asignar uno pronto.</p>`;
+    return;
+  }
+  if(r.status === 'not_started'){
+    card.style.display = 'block';
+    el.innerHTML = `<p class="muted">Tu programa "${escapeHtml(r.program.name)}" empieza el ${escapeHtml(r.startDate)}.</p>`;
+    return;
+  }
+  if(r.status === 'finished'){
+    card.style.display = 'block';
+    el.innerHTML = `<p class="muted">Tu ciclo "${escapeHtml(r.program.name)}" ya terminó (${r.program.weeks} semanas). Avísale a tu coach.</p>`;
+    return;
+  }
+  if(isDayEmpty(r.content)){
+    card.style.display = 'block';
+    el.innerHTML = `<p class="muted">Semana ${r.week} · ${escapeHtml(r.dayLabel)}: <b>Descanso</b>.</p>`;
     return;
   }
   card.style.display = 'block';
