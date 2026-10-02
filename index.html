@@ -1295,6 +1295,17 @@ function emptyStateHtml(text){
   return `<div class="empty-state"><svg class="empty-state-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M3 8l3-5h12l3 5"/><path d="M9 12h6"/></svg><p class="muted">${text}</p></div>`;
 }
 
+// Fix (auditoría visual/UX): los 7 botones "Borrar" de la app (scores, 1RM,
+// mediciones de Body, evaluaciones de Skills, bloques guardados, programas
+// completos, análisis de barra) borraban al toque, sin ninguna confirmación
+// — un tap sin querer (muy fácil en un botón rojo/delete en una lista larga
+// en el celular) pierde el dato para siempre, sin aviso ni forma de deshacer.
+// confirm() nativo en vez de un modal propio: estas son acciones poco
+// frecuentes, no vale la pena el componente nuevo solo para esto.
+function confirmDelete(message){
+  return confirm(message);
+}
+
 // Fix (auditoría visual/accesibilidad): el único indicador de éxito/error/info
 // de un toast era el color del borde izquierdo — para alguien con daltonismo
 // (o simplemente de un vistazo rápido) lima/rojo/gris pueden no distinguirse
@@ -2402,6 +2413,7 @@ async function renderRMHistory(){
     : emptyStateHtml('Sin registros aún.');
 }
 async function delRM(id){
+  if(!confirmDelete('¿Borrar este registro de 1RM? No se puede deshacer.')) return;
   await sb.from('scores').delete().eq('id', id);
   await renderRMHistory();
   await populateRMChartMovements();
@@ -2632,6 +2644,7 @@ async function renderBodyList(){
   }).join('') : emptyStateHtml('Sin mediciones registradas.');
 }
 async function delBody(id){
+  if(!confirmDelete('¿Borrar esta medición? No se puede deshacer.')) return;
   await sb.from('body_entries').delete().eq('id', id);
   await renderBodyList();
   await populateBodyChart();
@@ -2791,6 +2804,7 @@ function renderSkillsHistory(){
     : emptyStateHtml('Sin evaluaciones registradas.');
 }
 async function delSkills(id){
+  if(!confirmDelete('¿Borrar esta evaluación de skills? No se puede deshacer.')) return;
   await sb.from('skills_entries').delete().eq('id', id);
   await refreshSkillsHistory();
   populateSkillsDates();
@@ -7860,7 +7874,8 @@ function cancelEditBlock(){
   document.getElementById('blockCancelBtn').style.display = 'none';
 }
 
-async function deleteBlock(id){
+async function deleteBlock(id, title){
+  if(!confirmDelete(`¿Borrar el bloque "${title}"? No se puede deshacer.`)) return;
   await sb.from('blocks').delete().eq('id', id);
   if(_editingBlockId === id) cancelEditBlock();
   await loadBlocks();
@@ -7880,7 +7895,7 @@ function renderBlocksList(){
       html += `<div class="score-item"><span><b>${escapeHtml(b.title)}</b><br><span class="muted" style="font-size:11px;">${escapeHtml(b.content.replace(/\n/g,' · ').slice(0,80))}</span></span>
         <span style="display:flex; gap:8px; flex-shrink:0;">
           <button type="button" class="del" style="color:var(--lime);" onclick="editBlock('${b.id}')">Editar</button>
-          <button type="button" class="del" onclick="deleteBlock('${b.id}')">Borrar</button>
+          <button type="button" class="del" onclick="deleteBlock('${b.id}', ${JSON.stringify(b.title).replace(/"/g,'&quot;')})">Borrar</button>
         </span></div>`;
     });
     html += `</div>`;
@@ -8040,7 +8055,7 @@ async function renderProgList(){
           <button type="button" class="del" style="color:var(--lime);" onclick="toggleProgView('${p.id}')">Ver</button>
           <button type="button" class="del" style="color:var(--lime);" onclick="editProgram('${p.id}')">Editar</button>
           <button type="button" class="del" style="color:var(--lime);" onclick="exportProgram('${p.id}')">Exportar</button>
-          <button type="button" class="del" onclick="deleteProgram('${p.id}')">Borrar</button>
+          <button type="button" class="del" onclick="deleteProgram('${p.id}', ${JSON.stringify(p.name).replace(/"/g,'&quot;')})">Borrar</button>
         </span>
       </div>
       <div id="progView_${p.id}" style="display:none; margin-top:10px;"></div>
@@ -8072,7 +8087,8 @@ function toggleProgView(programId){
   el.style.display = 'block';
 }
 
-async function deleteProgram(id){
+async function deleteProgram(id, name){
+  if(!confirmDelete(`¿Borrar el programa "${name}" completo? Si hay alumnos con este programa asignado, van a quedar sin programa. No se puede deshacer.`)) return;
   const { error } = await sb.from('programs').delete().eq('id', id).eq('coach_id', currentUser.id);
   if(error){ toast('Error al borrar el programa: '+error.message, 'error'); return; }
   await renderProgList();
@@ -8533,6 +8549,7 @@ async function renderInviteCodesList(){
   }).join('');
 }
 async function deleteInviteCode(code){
+  if(!confirmDelete(`¿Borrar el código ${code}?`)) return;
   await sb.from('invite_codes').delete().eq('code', code).eq('created_by', currentUser.id);
   await renderInviteCodesList();
 }
@@ -9918,6 +9935,7 @@ function toggleBarAnalysisDetail(id){
 }
 
 async function deleteBarAnalysis(id){
+  if(!confirmDelete('¿Borrar este análisis de barra? No se puede deshacer.')) return;
   await sb.from('wl_analysis').delete().eq('id', id);
   await renderBarAnalysisList();
 }
@@ -10039,6 +10057,7 @@ async function renderScores(){
   }).join('');
 }
 async function delScore(id){
+  if(!confirmDelete('¿Borrar este score? No se puede deshacer.')) return;
   await sb.from('scores').delete().eq('id', id);
   await renderScores();
   await populateScoreChartMovements();
