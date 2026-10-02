@@ -262,6 +262,10 @@
   @keyframes toastIn{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);}}
   @keyframes toastOut{from{opacity:1;} to{opacity:0; transform:translateY(8px);}}
 
+  .spinner{ width:26px; height:26px; margin:0 auto 10px; border:3px solid var(--border); border-top-color:var(--lime); border-radius:50%; animation:spin .7s linear infinite; }
+  .spinner-inline{ display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align:-2px; border:2px solid var(--border); border-top-color:var(--lime); border-radius:50%; animation:spin .7s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
   footer.brandfoot{
     text-align:center; padding:16px; color:var(--gray-dim); font-size:11px;
     letter-spacing:0.5px;
@@ -386,6 +390,7 @@
     <p style="text-align:center; color:var(--gray); font-size:13px; margin-bottom:24px;">Coach Luis Casali · <span style="color:#555;" id="authVersionTag">v3.7</span></p>
 
     <div id="authLoading" class="card" style="text-align:center;">
+      <div class="spinner" aria-hidden="true"></div>
       <p class="muted">Verificando sesión...</p>
     </div>
 
@@ -623,7 +628,7 @@
     </div>
     <div class="card">
       <h3>Presets rápidos</h3>
-      <p class="muted" style="margin-bottom:10px;">Tocá uno para precargarlo — después apretá Start.</p>
+      <p class="muted" style="margin-bottom:10px;">Toca uno para precargarlo — después aprieta Start.</p>
       <div class="timer-preset-grid">
         <button type="button" class="timer-preset" onclick="applyTimerPreset('amrap',{minutes:12})">AMRAP 12'</button>
         <button type="button" class="timer-preset" onclick="applyTimerPreset('amrap',{minutes:20})">AMRAP 20'</button>
@@ -2345,7 +2350,7 @@ function calcRM(){
   // de 1RM es confiable pasadas ~20 reps de todos modos. Antes esto se
   // colaba directo a pantalla como si fuera un resultado válido.
   if(!wRaw || wRaw <= 0){
-    toast('Ingresá un peso válido (mayor a 0).', 'error');
+    toast('Ingresa un peso válido (mayor a 0).', 'error');
     return;
   }
   if(r > 20){
@@ -8242,7 +8247,7 @@ async function onContinueFromChange(){
   const programId = document.getElementById('genContinueFrom').value;
   const msg = document.getElementById('genContinueFromMsg');
   if(!programId){ _prevWodSignaturesCache = null; _prevProgramWeeksCache = 0; _prevClasicosCache = null; msg.textContent = ''; return; }
-  msg.textContent = 'Cargando...';
+  msg.innerHTML = '<span class="spinner-inline" aria-hidden="true"></span>Cargando...';
   const { data: prog, error } = await sb.from('programs').select('sessions, weeks').eq('id', programId).single();
   if(error || !prog){
     _prevWodSignaturesCache = null;
@@ -8738,7 +8743,7 @@ async function renderAthletesList(){
 async function toggleAthleteProgress(athleteId){
   const el = document.getElementById(`athleteProgress_${athleteId}`);
   if(el.style.display !== 'none'){ el.style.display='none'; return; }
-  el.innerHTML = '<p class="muted">Cargando progreso...</p>';
+  el.innerHTML = '<p class="muted" style="text-align:center;"><span class="spinner-inline" aria-hidden="true"></span>Cargando progreso...</p>';
   el.style.display = 'block';
 
   const [rms, bodies, skills, scoresData] = await Promise.all([
@@ -10360,7 +10365,7 @@ async function initAuth(){
 }
 function showConnectionError(){
   document.getElementById('authLoading').innerHTML = `
-    <p class="muted" style="color:#ff8c8c;">No pudimos conectar con el servidor. Revisá tu conexión a internet.</p>
+    <p class="muted" style="color:#ff8c8c;">No pudimos conectar con el servidor. Revisa tu conexión a internet.</p>
     <button class="btn" style="margin-top:14px;" onclick="location.reload()">Reintentar</button>
   `;
 }
