@@ -671,7 +671,7 @@
       </select>
       <button class="btn" onclick="calcRM()">Calcular</button>
       <h3 id="rmResult" style="margin-top:14px; color:var(--lime); font-size:24px;"></h3>
-      <button class="btn secondary" id="rmSaveBtn" style="display:none;" onclick="saveRM()">Guardar en historial</button>
+      <button class="btn secondary" id="rmSaveBtn" style="display:none;" onclick="saveRM(this)">Guardar en historial</button>
     </div>
 
     <div class="card">
@@ -752,7 +752,7 @@
         <div><label>Agua corporal (%)</label><input type="number" step="0.1" id="bodyWater"></div>
         <div><label>TMB (kcal)</label><input type="number" step="1" id="bodyBMR"></div>
       </div>
-      <button class="btn" onclick="saveBody()">Guardar medición</button>
+      <button class="btn" onclick="saveBody(this)">Guardar medición</button>
     </div>
 
     <div class="card">
@@ -788,7 +788,7 @@
         Repite cada cierto tiempo para ver dónde estás progresando y dónde tienes hoyos.
       </div>
       <div id="skillsSliders"></div>
-      <button class="btn" onclick="saveSkills()">Guardar evaluación</button>
+      <button class="btn" onclick="saveSkills(this)">Guardar evaluación</button>
     </div>
 
     <div class="card">
@@ -1131,7 +1131,7 @@
 
       <label id="scoreResultLabel">Resultado</label>
       <input type="text" id="scoreResult" placeholder="Ej: 4:32, 140kg, 12 rounds + 5 reps...">
-      <button class="btn" onclick="saveScore()">Guardar score</button>
+      <button class="btn" onclick="saveScore(this)">Guardar score</button>
     </div>
     <div class="card">
       <h3>Progreso</h3>
@@ -2380,20 +2380,29 @@ function renderPctFromRM(rm){
 // ser una VISTA filtrada sobre `scores`, no una base de datos aparte. Los
 // registros viejos de rm_entries se migran una sola vez con SQL (no se
 // borra la tabla — queda como respaldo, simplemente deja de usarse).
-async function saveRM(){
+async function saveRM(btn){
   // Fix (Luis: "por qué me salen dos Back Squat" en el selector de progreso):
   // rmMovement nunca hacía trim (a diferencia de scoreName, que sí) — un espacio
   // de más al escribir crea un nombre "distinto" para el agrupador, y aparece
   // como una segunda entrada separada aunque se vea idéntica en pantalla.
   const movement = document.getElementById('rmMovement').value.trim() || 'Sin nombre';
-  const { error } = await sb.from('scores').insert({
-    user_id: currentUser.id, name: movement, result: String(lastRM), category:'custom', score_type:'load'
-  });
-  if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
-  await renderRMHistory();
-  await populateRMChartMovements();
-  await renderScores(); // el mismo registro también vive en la lista de Scores
-  await populateScoreChartMovements();
+  // Fix (auditoría visual/UX): sin esto, un doble-tap (muy común en mobile,
+  // sobre todo con latencia de red) dispara dos inserts antes de que el
+  // primer await termine — mismo registro duplicado silenciosamente.
+  if(btn.disabled) return;
+  btn.disabled = true;
+  try{
+    const { error } = await sb.from('scores').insert({
+      user_id: currentUser.id, name: movement, result: String(lastRM), category:'custom', score_type:'load'
+    });
+    if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
+    await renderRMHistory();
+    await populateRMChartMovements();
+    await renderScores(); // el mismo registro también vive en la lista de Scores
+    await populateScoreChartMovements();
+  } finally {
+    btn.disabled = false;
+  }
 }
 let _rmHistCache = [];
 async function renderRMHistory(){
@@ -2604,7 +2613,7 @@ async function scanInbodyPhoto(file){
     document.getElementById('bodyPhotoInput').value = '';
   }
 }
-async function saveBody(){
+async function saveBody(btn){
   const date = document.getElementById('bodyDate').value;
   if(!date) return;
   const row = { user_id: currentUser.id, entry_date: date };
@@ -2621,15 +2630,25 @@ async function saveBody(){
   const hasData = Object.keys(BODY_METRICS).some(k=>jsVals[k]!==null);
   if(!hasData) return;
   Object.keys(BODY_METRICS).forEach(k=>{ row[BODY_METRICS[k].col] = jsVals[k]; });
-  const { data: existing } = await sb.from('body_entries').select('id')
-    .eq('user_id', currentUser.id).eq('entry_date', date).maybeSingle();
-  const { error } = existing
-    ? await sb.from('body_entries').update(row).eq('id', existing.id)
-    : await sb.from('body_entries').insert(row);
-  if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
-  ['bodyWeight','bodyPGC','bodySMM','bodyFatMass','bodyBMI','bodyVisceral','bodyWater','bodyBMR'].forEach(id=>document.getElementById(id).value='');
-  await renderBodyList();
-  await populateBodyChart();
+  // Fix (auditoría visual/UX, mismo criterio que saveRM): sin esto, un
+  // doble-tap puede disparar 2 llamadas que ambas vean "existing=null" (la
+  // primera todavía no terminó de insertar) y las dos inserten — 2 filas
+  // para la misma fecha en vez de una sola actualizada.
+  if(btn.disabled) return;
+  btn.disabled = true;
+  try{
+    const { data: existing } = await sb.from('body_entries').select('id')
+      .eq('user_id', currentUser.id).eq('entry_date', date).maybeSingle();
+    const { error } = existing
+      ? await sb.from('body_entries').update(row).eq('id', existing.id)
+      : await sb.from('body_entries').insert(row);
+    if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
+    ['bodyWeight','bodyPGC','bodySMM','bodyFatMass','bodyBMI','bodyVisceral','bodyWater','bodyBMR'].forEach(id=>document.getElementById(id).value='');
+    await renderBodyList();
+    await populateBodyChart();
+  } finally {
+    btn.disabled = false;
+  }
 }
 let _bodyHistCache = [];
 async function renderBodyList(){
@@ -2704,21 +2723,27 @@ function renderSkillsSliders(){
   }).join('');
 }
 
-async function saveSkills(){
+async function saveSkills(btn){
   // Mismo hallazgo que initBodyDate(): toISOString() usa UTC, no hora local —
   // de noche en Chile esto guardaba la evaluación bajo la fecha de MAÑANA.
   const date = _todayDateStr();
   const entry = { user_id: currentUser.id, entry_date: date };
   SKILLS_LIST.forEach(s=>{ entry[s.key] = parseInt(document.getElementById(`rng_${s.key}`).value); });
-  const { data: existing } = await sb.from('skills_entries').select('id')
-    .eq('user_id', currentUser.id).eq('entry_date', date).maybeSingle();
-  const { error } = existing
-    ? await sb.from('skills_entries').update(entry).eq('id', existing.id)
-    : await sb.from('skills_entries').insert(entry);
-  if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
-  await refreshSkillsHistory();
-  populateSkillsDates();
-  renderSkillsHistory();
+  if(btn.disabled) return; // mismo criterio que saveRM/saveBody — evita doble-tap
+  btn.disabled = true;
+  try{
+    const { data: existing } = await sb.from('skills_entries').select('id')
+      .eq('user_id', currentUser.id).eq('entry_date', date).maybeSingle();
+    const { error } = existing
+      ? await sb.from('skills_entries').update(entry).eq('id', existing.id)
+      : await sb.from('skills_entries').insert(entry);
+    if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
+    await refreshSkillsHistory();
+    populateSkillsDates();
+    renderSkillsHistory();
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function populateSkillsDates(){
@@ -7966,6 +7991,14 @@ async function saveProgram(){
   const kind = document.getElementById('progKind').value;
   const weeksCount = parseInt(document.getElementById('progWeeksCount').value)||1;
   if(!name){ return; }
+  // Fix (auditoría visual/UX, mismo criterio que saveScore/saveRM/saveBody/
+  // saveSkills): sin esto, un doble-tap en "Guardar programa" podía crear 2
+  // programas idénticos (modo creación) — el de mayor impacto de los 5, un
+  // programa entero de varias semanas duplicado, no solo una fila.
+  const saveBtn = document.getElementById('progSaveBtn');
+  if(saveBtn.disabled) return;
+  saveBtn.disabled = true;
+  try{
   const data = [];
   const sessions = [];
   for(let w=1; w<=weeksCount; w++){
@@ -8038,6 +8071,9 @@ async function saveProgram(){
   document.getElementById('progSaveBtn').style.display='none';
   document.getElementById('progCancelBtn').style.display='none';
   if(wasEditing) toast('Cambios guardados.', 'success');
+  } finally {
+    saveBtn.disabled = false;
+  }
 }
 
 let _progListCache = [];
@@ -9998,7 +10034,7 @@ function timeToSeconds(str){
   if(parts.length===2 && !isNaN(parts[0]) && !isNaN(parts[1])) return parts[0]*60+parts[1];
   return parseFloat(str)||null;
 }
-async function saveScore(){
+async function saveScore(btn){
   const cat = document.getElementById('scoreCategory').value;
   const result = document.getElementById('scoreResult').value.trim();
   if(!result) return;
@@ -10011,14 +10047,20 @@ async function saveScore(){
     name = document.getElementById('benchmarkPicker').value;
     scoreType = BENCHMARK_WODS[cat].find(w=>w.name===name).scoreType;
   }
-  const { error } = await sb.from('scores').insert({
-    user_id: currentUser.id, name, result, category:cat, score_type:scoreType
-  });
-  if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
-  document.getElementById('scoreName').value='';
-  document.getElementById('scoreResult').value='';
-  await renderScores();
-  await populateScoreChartMovements();
+  if(btn.disabled) return; // mismo criterio que saveRM/saveBody/saveSkills — evita doble-tap
+  btn.disabled = true;
+  try{
+    const { error } = await sb.from('scores').insert({
+      user_id: currentUser.id, name, result, category:cat, score_type:scoreType
+    });
+    if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
+    document.getElementById('scoreName').value='';
+    document.getElementById('scoreResult').value='';
+    await renderScores();
+    await populateScoreChartMovements();
+  } finally {
+    btn.disabled = false;
+  }
 }
 function bestValue(entries, scoreType){
   // devuelve el índice del mejor score dentro de "entries" (mismo movimiento), o -1 si no aplica ranking
