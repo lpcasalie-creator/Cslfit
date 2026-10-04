@@ -108,6 +108,7 @@
   .btn.secondary{background:transparent; border:1px solid var(--lime); color:var(--lime);}
   .btn.small{width:auto; padding:8px 14px; font-size:13px; margin-top:0;}
   .btn.danger{background:transparent; border:1px solid var(--danger); color:var(--danger);}
+  .btn:disabled, button.timer-preset:disabled{opacity:.5; cursor:not-allowed;}
   .timer-preset-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
   button.timer-preset{
     background:transparent; border:1px solid var(--lime); color:var(--lime); border-radius:8px;
@@ -2396,6 +2397,8 @@ async function saveRM(btn){
   // primer await termine — mismo registro duplicado silenciosamente.
   if(btn.disabled) return;
   btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Guardando...';
   try{
     const { error } = await sb.from('scores').insert({
       user_id: currentUser.id, name: movement, result: String(lastRM), category:'custom', score_type:'load'
@@ -2407,6 +2410,7 @@ async function saveRM(btn){
     await populateScoreChartMovements();
   } finally {
     btn.disabled = false;
+    btn.textContent = textoOriginal;
   }
 }
 let _rmHistCache = [];
@@ -2641,6 +2645,8 @@ async function saveBody(btn){
   // para la misma fecha en vez de una sola actualizada.
   if(btn.disabled) return;
   btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Guardando...';
   try{
     const { data: existing } = await sb.from('body_entries').select('id')
       .eq('user_id', currentUser.id).eq('entry_date', date).maybeSingle();
@@ -2653,6 +2659,7 @@ async function saveBody(btn){
     await populateBodyChart();
   } finally {
     btn.disabled = false;
+    btn.textContent = textoOriginal;
   }
 }
 let _bodyHistCache = [];
@@ -2736,6 +2743,8 @@ async function saveSkills(btn){
   SKILLS_LIST.forEach(s=>{ entry[s.key] = parseInt(document.getElementById(`rng_${s.key}`).value); });
   if(btn.disabled) return; // mismo criterio que saveRM/saveBody — evita doble-tap
   btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Guardando...';
   try{
     const { data: existing } = await sb.from('skills_entries').select('id')
       .eq('user_id', currentUser.id).eq('entry_date', date).maybeSingle();
@@ -2748,6 +2757,7 @@ async function saveSkills(btn){
     renderSkillsHistory();
   } finally {
     btn.disabled = false;
+    btn.textContent = textoOriginal;
   }
 }
 
@@ -10054,6 +10064,8 @@ async function saveScore(btn){
   }
   if(btn.disabled) return; // mismo criterio que saveRM/saveBody/saveSkills — evita doble-tap
   btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Guardando...';
   try{
     const { error } = await sb.from('scores').insert({
       user_id: currentUser.id, name, result, category:cat, score_type:scoreType
@@ -10065,6 +10077,7 @@ async function saveScore(btn){
     await populateScoreChartMovements();
   } finally {
     btn.disabled = false;
+    btn.textContent = textoOriginal;
   }
 }
 function bestValue(entries, scoreType){
