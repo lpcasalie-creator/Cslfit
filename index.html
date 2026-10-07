@@ -1097,6 +1097,61 @@
     </div>
   </section>
 
+  <!-- HYROX -->
+  <section id="hyrox" class="view">
+    <div class="card">
+      <h2>HYROX</h2>
+      <p class="muted">Registra tus resultados de carrera — con los tiempos de cada posta, si los tienes, para ver exactamente dónde ganas o pierdes tiempo.</p>
+    </div>
+
+    <div class="card">
+      <h3>Nueva carrera</h3>
+      <div class="grid2">
+        <div><label>Fecha</label><input type="date" id="hyroxDate"></div>
+        <div><label>División</label>
+          <select id="hyroxDivision">
+            <option value="open_m">Open Hombres</option>
+            <option value="open_w">Open Mujeres</option>
+            <option value="pro_m">Pro Hombres</option>
+            <option value="pro_w">Pro Mujeres</option>
+            <option value="doubles">Doubles</option>
+            <option value="relay">Relay</option>
+          </select>
+        </div>
+      </div>
+      <label>Nombre de la carrera (opcional)</label>
+      <input type="text" id="hyroxRaceName" placeholder="Ej: HYROX Santiago 2026">
+      <label>Tiempo total</label>
+      <input type="text" id="hyroxTotalTime" placeholder="Ej: 72:45 (mm:ss)">
+
+      <button type="button" class="link-inline" style="margin-top:10px;" onclick="toggleHyroxSplits()" id="hyroxSplitsToggle">+ Agregar tiempos por posta (opcional)</button>
+      <div id="hyroxSplitsWrap" style="display:none; margin-top:10px;">
+        <div id="hyroxSplitsGrid"></div>
+        <p class="muted" style="font-size:11px; margin-top:4px;">Si completas todas las postas, el tiempo total se calcula solo.</p>
+      </div>
+
+      <button class="btn" style="margin-top:14px;" onclick="saveHyroxResult(this)">Guardar carrera</button>
+    </div>
+
+    <div class="card">
+      <h3>Progreso</h3>
+      <canvas id="hyroxChart" width="460" height="200" style="width:100%; margin-top:10px;"></canvas>
+    </div>
+
+    <div class="card">
+      <h3>Historial</h3>
+      <div id="hyroxHistory" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="card">
+      <h3>Postas oficiales — orden y pesos</h3>
+      <div style="overflow-x:auto;">
+        <table id="hyroxStandardsTable" style="font-size:12px; white-space:nowrap;"></table>
+      </div>
+      <p class="muted" style="font-size:11px; margin-top:8px;">Estándar temporada 2025/26 — puede cambiar por temporada, confirma siempre en hyrox.com antes de competir.</p>
+    </div>
+  </section>
+
   <!-- SCORES -->
   <section id="scores" class="view">
     <div class="card">
@@ -1222,6 +1277,7 @@
   <button data-group="scores" onclick="showGroup('scores')"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 4h12v3a6 6 0 0 1-12 0V4z"/><path d="M6 5H3a3 3 0 0 0 3 3"/><path d="M18 5h3a3 3 0 0 1-3 3"/><path d="M12 13v4"/><path d="M8 21h8"/><path d="M9 17h6v4H9z"/></svg>Scores</button>
   <button data-group="prog" onclick="showGroup('prog')" id="progGroupTabBtn"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4"/><path d="M8 3v4"/><path d="M3 10h18"/></svg>Programación</button>
   <button data-group="mov" onclick="showGroup('mov')"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>Movimientos</button>
+  <button data-group="hyrox" onclick="showGroup('hyrox')"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 21V3"/><path d="M5 4h13l-3 4 3 4H5"/></svg>HYROX</button>
 </nav>
 <nav class="subnav" id="subnav-wod" style="display:none;">
   <button onclick="showView('wod')" data-tab="wod">WOD</button>
@@ -1347,9 +1403,10 @@ const UX01_VIEW_GROUP = {
   rm:'rm', pct:'rm',
   scores:'scores', body:'scores', skills:'scores', analysis:'scores',
   prog:'prog', athletes:'prog',
+  hyrox:'hyrox',
 };
 const UX01_GRUPO_VISTA_DEFAULT = { wod:'wod', rm:'rm', scores:'scores', prog:'prog' };
-const UX01_GRUPOS_SIN_SUBMENU = new Set(['home','mov']);
+const UX01_GRUPOS_SIN_SUBMENU = new Set(['home','mov','hyrox']);
 let UX01_ULTIMA_VISTA_POR_GRUPO = {};
 
 function showGroup(grupo){
@@ -1397,6 +1454,7 @@ function showView(id){
     activeBtn.scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'});
   }
   if(id==='pct') Promise.all([refreshPctData(), refreshRmByMovement()]).then(renderPctTable);
+  if(id==='hyrox'){ renderHyroxSplitsGrid(); renderHyroxStandardsTable(); renderHyroxHistory(); }
   if(id==='wod'){ loadTodayReadiness(); renderActiveProgramCard(); loadWod(); renderCrossfitHistory(); }
   if(id==='prog'){
     const isCoach = currentProfile && currentProfile.role==='coach';
@@ -10142,6 +10200,133 @@ async function delScore(id){
   await sb.from('scores').delete().eq('id', id);
   await renderScores();
   await populateScoreChartMovements();
+}
+
+/* ---------------- HYROX ---------------- */
+// Orden oficial de carrera: 8km corridos en 8 tramos de 1km, alternados con
+// las 8 postas, siempre en el mismo orden. Pesos por división verificados
+// contra fuentes públicas de la temporada 2025/26 (hyrox.com es la fuente
+// oficial — las cargas pueden cambiar de temporada a temporada).
+const HYROX_SPLITS = [
+  { key:'run1',      label:'Carrera 1 (1km)' },
+  { key:'ski',        label:'SkiErg (1000m)' },
+  { key:'run2',      label:'Carrera 2 (1km)' },
+  { key:'sled_push',  label:'Sled Push (50m)' },
+  { key:'run3',      label:'Carrera 3 (1km)' },
+  { key:'sled_pull',  label:'Sled Pull (50m)' },
+  { key:'run4',      label:'Carrera 4 (1km)' },
+  { key:'burpees',    label:'Burpee Broad Jump (80m)' },
+  { key:'run5',      label:'Carrera 5 (1km)' },
+  { key:'row',        label:'Rowing (1000m)' },
+  { key:'run6',      label:'Carrera 6 (1km)' },
+  { key:'carry',      label:'Farmers Carry (200m)' },
+  { key:'run7',      label:'Carrera 7 (1km)' },
+  { key:'lunges',     label:'Sandbag Lunges (100m)' },
+  { key:'run8',      label:'Carrera 8 (1km)' },
+  { key:'wallballs',  label:'Wall Balls (100/75 reps)' },
+];
+const HYROX_DIVISION_LABELS = {
+  open_m:'Open Hombres', open_w:'Open Mujeres', pro_m:'Pro Hombres', pro_w:'Pro Mujeres',
+  doubles:'Doubles', relay:'Relay',
+};
+const HYROX_STANDARDS = [
+  { posta:'Sled Push (50m)',      open_w:'102 kg', open_m:'152 kg', pro_w:'152 kg', pro_m:'202 kg' },
+  { posta:'Sled Pull (50m)',      open_w:'78 kg',  open_m:'103 kg', pro_w:'103 kg', pro_m:'153 kg' },
+  { posta:'Farmers Carry (c/mano)', open_w:'16 kg', open_m:'24 kg', pro_w:'24 kg', pro_m:'32 kg' },
+  { posta:'Sandbag Lunges',       open_w:'10 kg',  open_m:'20 kg', pro_w:'20 kg', pro_m:'30 kg' },
+  { posta:'Wall Balls',           open_w:'4kg · 75 reps', open_m:'6kg · 100 reps', pro_w:'6kg · 100 reps', pro_m:'9kg · 100 reps' },
+];
+function renderHyroxStandardsTable(){
+  const rows = HYROX_STANDARDS.map(r=>`<tr><td class="name">${r.posta}</td><td>${r.open_w}</td><td>${r.open_m}</td><td>${r.pro_w}</td><td>${r.pro_m}</td></tr>`).join('');
+  document.getElementById('hyroxStandardsTable').innerHTML =
+    `<tr><th style="text-align:left;">Posta</th><th>Open W</th><th>Open M</th><th>Pro W</th><th>Pro M</th></tr>${rows}`;
+}
+function renderHyroxSplitsGrid(){
+  const wrap = document.getElementById('hyroxSplitsGrid');
+  if(wrap.childElementCount) return; // ya armado, no reconstruir en cada visita (perdería lo tipeado)
+  let html = '';
+  for(let i=0; i<HYROX_SPLITS.length; i+=2){
+    html += `<div class="grid2">`;
+    for(let j=i; j<Math.min(i+2, HYROX_SPLITS.length); j++){
+      html += `<div><label>${HYROX_SPLITS[j].label}</label><input type="text" id="hx_${HYROX_SPLITS[j].key}" placeholder="mm:ss"></div>`;
+    }
+    html += `</div>`;
+  }
+  wrap.innerHTML = html;
+}
+function toggleHyroxSplits(){
+  const wrap = document.getElementById('hyroxSplitsWrap');
+  const open = wrap.style.display !== 'none';
+  wrap.style.display = open ? 'none' : 'block';
+  document.getElementById('hyroxSplitsToggle').textContent = open
+    ? '+ Agregar tiempos por posta (opcional)' : '− Ocultar tiempos por posta';
+}
+function _hyroxReadSplits(){
+  const splits = {};
+  let sum = 0, any = false;
+  HYROX_SPLITS.forEach(s=>{
+    const el = document.getElementById(`hx_${s.key}`);
+    const v = el && el.value.trim() ? timeToSeconds(el.value.trim()) : null;
+    if(v!==null && !isNaN(v)){ splits[s.key] = v; sum += v; any = true; }
+  });
+  return { splits, sum, any, complete: any && Object.keys(splits).length===HYROX_SPLITS.length };
+}
+async function saveHyroxResult(btn){
+  const race_date = document.getElementById('hyroxDate').value || _todayDateStr();
+  const division = document.getElementById('hyroxDivision').value;
+  const race_name = document.getElementById('hyroxRaceName').value.trim() || null;
+  const { splits, sum, any, complete } = _hyroxReadSplits();
+  const totalRaw = document.getElementById('hyroxTotalTime').value.trim();
+  let total_seconds = totalRaw ? timeToSeconds(totalRaw) : null;
+  if((total_seconds===null || isNaN(total_seconds)) && complete) total_seconds = sum;
+  if(total_seconds===null || isNaN(total_seconds) || total_seconds<=0){
+    toast('Ingresa el tiempo total (o completa todas las postas para calcularlo solo).', 'error');
+    return;
+  }
+  if(btn.disabled) return; // mismo criterio que saveRM/saveBody/saveSkills/saveScore — evita doble-tap
+  btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Guardando...';
+  try{
+    const { error } = await sb.from('hyrox_results').insert({
+      user_id: currentUser.id, race_date, division, race_name,
+      total_seconds, splits: any ? splits : null,
+    });
+    if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
+    document.getElementById('hyroxRaceName').value = '';
+    document.getElementById('hyroxTotalTime').value = '';
+    HYROX_SPLITS.forEach(s=>{ const el = document.getElementById(`hx_${s.key}`); if(el) el.value=''; });
+    await renderHyroxHistory();
+    toast('✓ Carrera guardada.', 'success');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+let _hyroxHistCache = [];
+async function renderHyroxHistory(){
+  const { data } = await sb.from('hyrox_results').select('*')
+    .eq('user_id', currentUser.id).order('race_date', {ascending:false}).limit(50);
+  _hyroxHistCache = data || [];
+  document.getElementById('hyroxHistory').innerHTML = _hyroxHistCache.length
+    ? _hyroxHistCache.map(r=>{
+        const splitsLine = r.splits
+          ? `<br><span class="muted" style="font-size:11px;">${HYROX_SPLITS.filter(s=>r.splits[s.key]!==undefined).map(s=>`${s.label.split(' (')[0]} ${fmt(r.splits[s.key])}`).join(' · ')}</span>`
+          : '';
+        return `<div class="score-item"><span>${r.race_date} — <b>${fmt(r.total_seconds)}</b> <span class="muted">(${HYROX_DIVISION_LABELS[r.division]||r.division})${r.race_name?' · '+escapeHtml(r.race_name):''}</span>${splitsLine}</span><button type="button" class="del" onclick="delHyroxResult('${r.id}')">Borrar</button></div>`;
+      }).join('')
+    : emptyStateHtml('Sin carreras registradas todavía.');
+  drawHyroxChart();
+}
+function drawHyroxChart(){
+  const points = _hyroxHistCache.slice().reverse() // más antiguo -> más reciente
+    .map(r=>({ label:r.race_date.slice(5), value: Math.round(r.total_seconds/60*10)/10 }));
+  drawLineChart('hyroxChart', points, {unit:' min'});
+}
+async function delHyroxResult(id){
+  if(!confirmDelete('¿Borrar esta carrera? No se puede deshacer.')) return;
+  await sb.from('hyrox_results').delete().eq('id', id);
+  await renderHyroxHistory();
 }
 
 /* ---------------- SUPABASE: config + auth ---------------- */
