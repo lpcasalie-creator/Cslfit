@@ -669,12 +669,6 @@
           <input type="number" id="rmReps" value="1" min="1" max="20">
         </div>
       </div>
-      <label>Fórmula</label>
-      <select id="rmFormula">
-        <option value="epley">Epley</option>
-        <option value="brzycki">Brzycki</option>
-        <option value="oconner">O'Conner</option>
-      </select>
       <button class="btn" onclick="calcRM()">Calcular</button>
       <h3 id="rmResult" style="margin-top:14px; color:var(--lime); font-size:24px;"></h3>
       <button class="btn secondary" id="rmSaveBtn" style="display:none;" onclick="saveRM(this)">Guardar en historial</button>
@@ -1402,7 +1396,7 @@ function showView(id){
     activeBtn.setAttribute('aria-current', 'page');
     activeBtn.scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'});
   }
-  if(id==='pct') refreshPctData().then(renderPctTable);
+  if(id==='pct') Promise.all([refreshPctData(), refreshRmByMovement()]).then(renderPctTable);
   if(id==='wod'){ loadTodayReadiness(); renderActiveProgramCard(); loadWod(); renderCrossfitHistory(); }
   if(id==='prog'){
     const isCoach = currentProfile && currentProfile.role==='coach';
@@ -2163,7 +2157,7 @@ function drawScoreChart(){
   }
   const scoreType = graphable[graphable.length-1].score_type;
   const points = graphable.map(s=>({
-    label:s.entry_date,
+    label:(s.created_at||'').slice(5,10),
     value: s.score_type==='time' ? timeToSeconds(s.result) : parseFloat(s.result)
   })).filter(p=>p.value!==null && !isNaN(p.value));
   drawLineChart('scoreChart', points, {unit: scoreType==='load'?' kg':''});
@@ -2214,9 +2208,14 @@ async function setWeightUnit(unit){
   const fh = document.getElementById('pctFaltanHeader'); if(fh) fh.innerHTML = `${unit==='lb'?'Lb':'Kg'}<br>faltan`;
 }
 
+// Fix (auditoría visual/UX): la calculadora ofrecía elegir entre Epley,
+// Brzycki y O'Conner, pero las 3 estiman cosas distintas para el mismo
+// peso/reps y confunden más de lo que ayudan. Epley es el estándar de facto
+// en CrossFit/halterofilia (Wodify, SugarWOD, etc. la usan por defecto) y ya
+// es la fórmula que sostiene "Mis PRs" en este mismo archivo (ver "Epley
+// inverso" más abajo) — se deja como única fórmula para no tener 2 sistemas
+// de estimación de 1RM conviviendo en la misma app.
 function epley(w,r){ return r<=1 ? w : (0.033*r*w)+w; }
-function brzycki(w,r){ return r<=1 ? w : w*(36/(37-r)); }
-function oconner(w,r){ return r<=1 ? w : w*(1+0.025*r); }
 
 let lastRM = null;
 /* ================= MIS PRs — vista rápida de porcentajes ================= */
@@ -2342,14 +2341,11 @@ function renderPrDetail(){
 function calcRM(){
   const wRaw = parseFloat(document.getElementById('rmWeight').value);
   const r = parseFloat(document.getElementById('rmReps').value)||1;
-  const formula = document.getElementById('rmFormula').value;
   // Analizando la app como usuaria/o: "!wRaw" sólo atajaba 0/NaN/vacío — un
   // peso NEGATIVO (ej. -50, truthy) pasaba de largo y calculaba un "1RM"
-  // negativo sin ningún aviso. Además, ninguna de las 3 fórmulas valida el
-  // rango de repeticiones: Brzycki (w*36/(37-r)) se rompe matemáticamente
-  // desde 37 reps — "Infinity kg" en 37, negativo en 45+ — y ninguna fórmula
-  // de 1RM es confiable pasadas ~20 reps de todos modos. Antes esto se
-  // colaba directo a pantalla como si fuera un resultado válido.
+  // negativo sin ningún aviso. Además, ninguna fórmula de 1RM es confiable
+  // pasadas ~20 reps. Antes esto se colaba directo a pantalla como si fuera
+  // un resultado válido.
   if(!wRaw || wRaw <= 0){
     toast('Ingresa un peso válido (mayor a 0).', 'error');
     return;
@@ -2359,10 +2355,7 @@ function calcRM(){
     return;
   }
   const w = weightInputToKg(wRaw); // Fase 18 (Fix 15): siempre trabajar en kg desde acá para adentro
-  let rm;
-  if(formula==='epley') rm = epley(w,r);
-  else if(formula==='brzycki') rm = brzycki(w,r);
-  else rm = oconner(w,r);
+  const rm = epley(w,r);
   lastRM = rm; // canónico, siempre kg
   document.getElementById('rmResult').textContent = fmtWeight(rm)+' — 1RM estimado';
   document.getElementById('rmSaveBtn').style.display='block';
@@ -2466,6 +2459,29 @@ async function refreshPctData(){
   const { data } = await sb.from('pct_data').select('data').eq('user_id', currentUser.id).maybeSingle();
   _pctDataCache = (data && data.data) || {};
 }
+// Fix (auditoría visual/UX, "duplicidad de datos"): antes, % BS obligaba a
+// tipear de nuevo cada PR en una tabla aparte (pct_data) aunque el atleta ya
+// lo tuviera cargado en 1RM/Scores — si actualizaba su Back Squat en la
+// calculadora, acá seguía mostrando el número viejo hasta que lo volviera a
+// escribir a mano. Ahora % BS lee directo de `scores` (score_type='load') y
+// pre-llena cada fila con el RM vigente; el campo sigue siendo editable por
+// si el atleta quiere simular un "qué pasaría si" sin tocar su PR real —
+// mismo criterio de "manual pisa a automático" para no perder datos que
+// alguien ya haya cargado acá antes de este cambio.
+function _normalizeMovementName(s){
+  return (s||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+}
+let _rmByMovementCache = {}; // nombre normalizado -> RM vigente en kg
+async function refreshRmByMovement(){
+  const { data } = await sb.from('scores').select('name, result, created_at')
+    .eq('user_id', currentUser.id).eq('score_type', 'load').order('created_at', {ascending:true});
+  const byMovement = {};
+  (data||[]).forEach(s=>{
+    const v = parseFloat(s.result);
+    if(!isNaN(v)) byMovement[_normalizeMovementName(s.name)] = v; // ascendente: el último pisa, queda el vigente
+  });
+  _rmByMovementCache = byMovement;
+}
 async function setPctValue(name, field, val){
   _pctDataCache[name] = _pctDataCache[name] || {};
   // Fase 18 (Fix 15): 'pr' es peso -> se guarda SIEMPRE en kg (canónico), sin
@@ -2482,20 +2498,25 @@ async function resetPctTable(){
   renderPctTable();
 }
 
+function _resolvePctEntry(name){
+  const manual = _pctDataCache[name];
+  if(manual && manual.pr!==undefined && manual.pr!==''){
+    const pr = parseFloat(manual.pr)||0;
+    const reps = parseFloat(manual.reps)||0;
+    return { pr, reps, estimated: pr ? epley(pr, reps||1) : null, auto:false };
+  }
+  const autoPR = _rmByMovementCache[_normalizeMovementName(name)];
+  if(autoPR!==undefined) return { pr:autoPR, reps:'', estimated:autoPR, auto:true };
+  return { pr:0, reps:'', estimated:null, auto:false };
+}
 function renderPctTable(){
-  const data = _pctDataCache;
-  const bs = data['Back Squat'] || {};
-  const bsPR = parseFloat(bs.pr)||0, bsReps = parseFloat(bs.reps)||0;
-  const bsEstimated = bsPR ? epley(bsPR, bsReps||1) : 0;
+  const bsEntry = _resolvePctEntry('Back Squat');
+  const bsEstimated = bsEntry.estimated || 0;
 
   const rowsHtml = PCT_MOVEMENTS.map(m=>{
-    const d = data[m.name] || {};
-    const pr = d.pr!==undefined ? d.pr : ''; // canónico kg
-    const reps = d.reps!==undefined ? d.reps : '';
-    const prDisplay = pr!=='' ? kgToWeightInputVal(pr) : ''; // Fase 18 (Fix 15): mostrar en la unidad elegida
-    const ownPR = parseFloat(pr)||0; // sigue en kg para todo el cálculo interno
-    const ownReps = parseFloat(reps)||0;
-    const ownEstimated = ownPR ? epley(ownPR, ownReps||1) : null;
+    const entry = _resolvePctEntry(m.name);
+    const prDisplay = entry.pr ? kgToWeightInputVal(entry.pr) : ''; // Fase 18 (Fix 15): mostrar en la unidad elegida
+    const ownEstimated = entry.estimated;
 
     let idealCell = '—', pctCell = m.pct===null ? 'ancla' : (m.pct*100).toFixed(0)+'%';
     let optCell = '—', kgCell = '—';
@@ -2520,10 +2541,10 @@ function renderPctTable(){
     const optClass = optCell!=='—' ? (parseFloat(optCell)>=100?'pos':'neg') : '';
 
     return `<tr class="${rowClass}">
-      <td class="name">${m.name}</td>
+      <td class="name">${m.name}${entry.auto?'<br><span class="muted" style="font-size:10px;">(desde tus RM)</span>':''}</td>
       <td><input type="number" step="0.5" value="${prDisplay}" style="width:56px;padding:4px;font-size:12px;"
           onchange="setPctValue('${m.name}','pr',this.value)"></td>
-      <td><input type="number" value="${reps}" style="width:42px;padding:4px;font-size:12px;"
+      <td><input type="number" value="${entry.auto?'':entry.reps}" style="width:42px;padding:4px;font-size:12px;"
           onchange="setPctValue('${m.name}','reps',this.value)"></td>
       <td>${idealCell}</td>
       <td>${pctCell}</td>
@@ -8801,7 +8822,7 @@ async function toggleAthleteProgress(athleteId){
   const sc = scoresData.data || [];
   if(sc.length){
     html += sec('Scores recientes', sc.slice(0,8).map(s=>
-      row(`${escapeHtml(s.name)} — <b>${escapeHtml(s.result)}</b> <span class="muted">(${s.entry_date})</span>`)).join(''));
+      row(`${escapeHtml(s.name)} — <b>${escapeHtml(s.result)}</b> <span class="muted">(${(s.created_at||'').slice(0,10)})</span>`)).join(''));
   } else html += sec('Scores', '<p class="muted" style="font-size:12px;">Sin scores.</p>');
 
   el.innerHTML = html;
@@ -10113,7 +10134,7 @@ async function renderScores(){
   const catLabel = {girls:'Girls', hero:'Hero', custom:''};
   document.getElementById('scoreList').innerHTML = scores.map((s)=>{
     const isPR = prIds.has(s.id);
-    return `<div class="score-item"><span>${escapeHtml(s.name)}${catLabel[s.category]?` <span class="muted">(${catLabel[s.category]})</span>`:''} — <b>${escapeHtml(s.result)}</b> ${isPR?'🏆':''} <span class="muted">(${s.entry_date})</span></span><button type="button" class="del" onclick="delScore('${s.id}')">Borrar</button></div>`;
+    return `<div class="score-item"><span>${escapeHtml(s.name)}${catLabel[s.category]?` <span class="muted">(${catLabel[s.category]})</span>`:''} — <b>${escapeHtml(s.result)}</b> ${isPR?'🏆':''} <span class="muted">(${(s.created_at||'').slice(0,10)})</span></span><button type="button" class="del" onclick="delScore('${s.id}')">Borrar</button></div>`;
   }).join('');
 }
 async function delScore(id){
@@ -10343,7 +10364,7 @@ async function onLoggedIn(user){
   renderHomeSessionCompact();
   renderHomeDashboard();
   await loadWod();
-  await refreshPctData();
+  await Promise.all([refreshPctData(), refreshRmByMovement()]);
   renderPctTable();
   initAutocomplete();
   ['rmMovement','wodName','wodDetail','scoreName'].forEach(id=>{
