@@ -1144,10 +1144,8 @@
     </div>
 
     <div class="card">
-      <h3>Postas oficiales — orden y pesos</h3>
-      <div style="overflow-x:auto;">
-        <table id="hyroxStandardsTable" style="font-size:12px; white-space:nowrap;"></table>
-      </div>
+      <h3>Postas oficiales — orden, distancia y peso</h3>
+      <div id="hyroxStandardsTable"></div>
       <p class="muted" style="font-size:11px; margin-top:8px;">Estándar temporada 2025/26 — puede cambiar por temporada, confirma siempre en hyrox.com antes de competir.</p>
     </div>
   </section>
@@ -10229,17 +10227,33 @@ const HYROX_DIVISION_LABELS = {
   open_m:'Open Hombres', open_w:'Open Mujeres', pro_m:'Pro Hombres', pro_w:'Pro Mujeres',
   doubles:'Doubles', relay:'Relay',
 };
-const HYROX_STANDARDS = [
-  { posta:'Sled Push (50m)',      open_w:'102 kg', open_m:'152 kg', pro_w:'152 kg', pro_m:'202 kg' },
-  { posta:'Sled Pull (50m)',      open_w:'78 kg',  open_m:'103 kg', pro_w:'103 kg', pro_m:'153 kg' },
-  { posta:'Farmers Carry (c/mano)', open_w:'16 kg', open_m:'24 kg', pro_w:'24 kg', pro_m:'32 kg' },
-  { posta:'Sandbag Lunges',       open_w:'10 kg',  open_m:'20 kg', pro_w:'20 kg', pro_m:'30 kg' },
-  { posta:'Wall Balls',           open_w:'4kg · 75 reps', open_m:'6kg · 100 reps', pro_w:'6kg · 100 reps', pro_m:'9kg · 100 reps' },
+// Las 8 postas en el orden oficial real de carrera (intercaladas con las 8
+// carreras de 1km — ver HYROX_SPLITS). SkiErg, Burpee Broad Jump y Rowing son
+// de peso corporal: iguales en todas las divisiones, sin carga que mostrar.
+const HYROX_STATIONS = [
+  { n:1, name:'SkiErg',             dist:'1000m',  weight:null },
+  { n:2, name:'Sled Push',          dist:'50m',    weight:{open_w:'102 kg', open_m:'152 kg', pro_w:'152 kg', pro_m:'202 kg'} },
+  { n:3, name:'Sled Pull',          dist:'50m',    weight:{open_w:'78 kg',  open_m:'103 kg', pro_w:'103 kg', pro_m:'153 kg'} },
+  { n:4, name:'Burpee Broad Jump',  dist:'80m',    weight:null },
+  { n:5, name:'Rowing',             dist:'1000m',  weight:null },
+  { n:6, name:'Farmers Carry',      dist:'200m',   weight:{open_w:'16 kg c/mano', open_m:'24 kg c/mano', pro_w:'24 kg c/mano', pro_m:'32 kg c/mano'} },
+  { n:7, name:'Sandbag Lunges',     dist:'100m',   weight:{open_w:'10 kg',  open_m:'20 kg', pro_w:'20 kg', pro_m:'30 kg'} },
+  { n:8, name:'Wall Balls',         dist:'100/75 reps', weight:{open_w:'4kg · 75 reps', open_m:'6kg · 100 reps', pro_w:'6kg · 100 reps', pro_m:'9kg · 100 reps'} },
 ];
 function renderHyroxStandardsTable(){
-  const rows = HYROX_STANDARDS.map(r=>`<tr><td class="name">${r.posta}</td><td>${r.open_w}</td><td>${r.open_m}</td><td>${r.pro_w}</td><td>${r.pro_m}</td></tr>`).join('');
-  document.getElementById('hyroxStandardsTable').innerHTML =
-    `<tr><th style="text-align:left;">Posta</th><th>Open W</th><th>Open M</th><th>Pro W</th><th>Pro M</th></tr>${rows}`;
+  document.getElementById('hyroxStandardsTable').innerHTML = HYROX_STATIONS.map(s=>{
+    const weightLine = s.weight
+      ? `Open W ${s.weight.open_w} · Open M/Pro W ${s.weight.open_m} · Pro M ${s.weight.pro_m}`
+      : 'Peso corporal — mismo para todas las divisiones';
+    return `<div style="display:flex; gap:10px; padding:10px 0; border-bottom:1px solid var(--border);">
+      <div style="flex:0 0 auto; width:24px; height:24px; border-radius:50%; border:1px solid var(--lime); color:var(--lime);
+          display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px;">${s.n}</div>
+      <div style="flex:1; min-width:0;">
+        <div><b>${s.name}</b> <span class="muted">— ${s.dist}</span></div>
+        <div class="muted" style="font-size:11px; margin-top:2px;">${weightLine}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 function renderHyroxSplitsGrid(){
   const wrap = document.getElementById('hyroxSplitsGrid');
