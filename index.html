@@ -1004,7 +1004,7 @@
          la lista de movimientos; si no, dejaba de pegarse apenas se pasaba esa
          tarjeta. -->
     <div style="position:sticky; top:var(--header-h); z-index:10; background:var(--bg); padding:10px 18px; margin:0 -18px;">
-      <input type="text" id="movSearch" placeholder="Buscar movimiento..." oninput="renderMov()" style="margin:0;">
+      <input type="text" id="movSearch" placeholder="Buscar movimiento..." oninput="renderMovListDebounced()" style="margin:0;">
     </div>
     <div class="card">
       <button class="btn has-icon" style="margin-top:0;" onclick="openScalingGuide()"><svg class="btnicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Guía de escalamiento completa (imprimir / PDF)</button>
@@ -8716,11 +8716,18 @@ async function getLastActivityMap(athleteIds){
   if(!athleteIds.length) return {};
   // rm_entries se retiró (ver saveRM) — un 1RM ahora vive en `scores`, ya cubierto
   // por la consulta de scores de abajo, no hace falta consultarlo aparte.
-  const [body, skills, scores, wod] = await Promise.all([
+  // Fix (revisión de eficiencia/producto): faltaba hyrox_results acá — un
+  // alumno que solo registra carreras HYROX (sin cargar RM/scores/body/
+  // skills) aparecía "sin actividad" en Mis Alumnos aunque estuviera
+  // entrenando. Se usa created_at (cuándo se cargó en la app), igual que
+  // scores/skills, no race_date (que puede ser una carrera vieja cargada
+  // recién) — el criterio es actividad EN LA APP, no fecha de la carrera.
+  const [body, skills, scores, wod, hyrox] = await Promise.all([
     sb.from('body_entries').select('user_id, created_at').in('user_id', athleteIds),
     sb.from('skills_entries').select('user_id, created_at').in('user_id', athleteIds),
     sb.from('scores').select('user_id, created_at').in('user_id', athleteIds),
     sb.from('wod_notes').select('user_id, updated_at').in('user_id', athleteIds),
+    sb.from('hyrox_results').select('user_id, created_at').in('user_id', athleteIds),
   ]);
   const map = {};
   const consider = (rows, dateField) => (rows.data||[]).forEach(r=>{
@@ -8731,6 +8738,7 @@ async function getLastActivityMap(athleteIds){
   consider(skills, 'created_at');
   consider(scores, 'created_at');
   consider(wod, 'updated_at');
+  consider(hyrox, 'created_at');
   return map;
 }
 
@@ -9581,7 +9589,23 @@ function toggleScalingSteps(btn){
   list.style.display = show ? 'block' : 'none';
   btn.textContent = show ? 'Ocultar escalamiento ▲' : 'Ver escalamiento ▼';
 }
+// Fix (revisión de eficiencia): renderMov() reconstruía TODO en cada tecla
+// tipeada en el buscador — los ~350 movimientos filtrados, Y ADEMÁS las
+// listas de Girls/Hero WODs enteras, que no dependen para nada del texto
+// buscado. Trabajo desperdiciado en cada letra, más notorio en celulares de
+// gama baja. Se separa en dos funciones: la lista de benchmarks se arma UNA
+// vez al entrar a la vista (renderMovBenchmarks), y el buscador (con
+// debounce, ver debounce() más abajo) solo reconstruye la lista filtrada.
+function debounce(fn, ms){
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), ms); };
+}
 function renderMov(){
+  renderMovList();
+  renderMovBenchmarks();
+}
+const renderMovListDebounced = debounce(renderMovList, 150);
+function renderMovList(){
   const q = (document.getElementById('movSearch')?.value||'').toLowerCase();
   let html = '';
   Object.keys(MOVEMENTS).forEach(cat=>{
@@ -9617,7 +9641,8 @@ function renderMov(){
       }).join('');
   });
   document.getElementById('movList').innerHTML = html || emptyStateHtml('Sin resultados.');
-
+}
+function renderMovBenchmarks(){
   document.getElementById('girlsList').innerHTML = BENCHMARK_WODS.girls
     .map(w=>`<div class="score-item"><span><b>${w.name}</b><br><span class="muted">${w.desc}</span></span>
       <a href="${ytSearchUrl(w.name, 'CrossFit')}" target="_blank" rel="noopener" style="color:var(--lime); font-size:11px; text-decoration:none; flex-shrink:0;">▶ Video</a>
