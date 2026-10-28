@@ -160,6 +160,8 @@
     display:inline-flex; align-items:center; gap:5px;
   }
   nav.tabbar button.active{color:var(--lime);}
+  nav.tabbar button{ position:relative; }
+  .unread-dot{ position:absolute; top:6px; right:6px; width:8px; height:8px; border-radius:50%; background:var(--danger); border:1.5px solid var(--bg2); }
   svg.tabicon{
     width:15px; height:15px; flex:0 0 auto;
     fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round;
@@ -213,6 +215,16 @@
     padding:10px 0; border-bottom:1px solid var(--border); font-size:13px;
   }
   .score-item .del{color:var(--danger); font-size:11px; cursor:pointer; text-transform:uppercase;}
+  .msg-row{ display:flex; }
+  .msg-row.mine{ justify-content:flex-end; }
+  .msg-bubble{ max-width:78%; padding:9px 12px; border-radius:14px; font-size:13px; line-height:1.4; word-break:break-word; }
+  .msg-row.mine .msg-bubble{ background:var(--lime); color:#0d0d0d; border-bottom-right-radius:3px; }
+  .msg-row:not(.mine) .msg-bubble{ background:var(--bg2); border:1px solid var(--border); color:var(--white); border-bottom-left-radius:3px; }
+  .msg-meta{ font-size:10px; color:var(--gray-dim); margin-top:3px; }
+  .msg-row.mine .msg-meta{ text-align:right; }
+  .conv-item{ display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--border); cursor:pointer; background:none; border-left:none; border-right:none; border-top:none; width:100%; text-align:left; font:inherit; color:inherit; }
+  .conv-item .conv-preview{ font-size:12px; color:var(--gray-dim); margin-top:2px; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .conv-unread-badge{ background:var(--danger); color:#fff; font-size:10px; font-weight:800; border-radius:10px; padding:2px 7px; flex-shrink:0; }
   /* Fix (auditoría de accesibilidad: 18 spans/divs con onclick, invisibles para
      teclado y lector de pantalla — sin tabindex, sin role, sin foco). Se pasan a
      <button> real; este reset les quita el fondo/borde/padding por defecto del
@@ -1151,6 +1163,26 @@
     </div>
   </section>
 
+  <!-- MENSAJES -->
+  <section id="messages" class="view">
+    <div class="card" id="messagesConversationsCard" style="display:none;">
+      <h2>Mensajes</h2>
+      <p class="muted">Conversaciones con tus alumnos.</p>
+      <div id="messagesConversationsList" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="card" id="messagesThreadCard">
+      <button type="button" class="link-inline" id="messagesBackBtn" style="display:none; margin-bottom:10px;" onclick="closeMessageThread()">← Volver a conversaciones</button>
+      <h2 id="messagesThreadTitle">Mensajes</h2>
+      <div id="messagesThreadList" style="display:flex; flex-direction:column; gap:8px; max-height:50vh; overflow-y:auto; margin:10px 0 14px; padding-right:2px;"></div>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="messageInput" placeholder="Escribe un mensaje..." style="margin:0; flex:1;"
+            onkeydown="if(event.key==='Enter'){ event.preventDefault(); sendMessage(document.getElementById('messageSendBtn')); }">
+        <button class="btn small" id="messageSendBtn" style="margin:0; width:auto; padding:10px 16px;" onclick="sendMessage(this)">Enviar</button>
+      </div>
+    </div>
+  </section>
+
   <!-- SCORES -->
   <section id="scores" class="view">
     <div class="card">
@@ -1277,6 +1309,7 @@
   <button data-group="prog" onclick="showGroup('prog')" id="progGroupTabBtn"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4"/><path d="M8 3v4"/><path d="M3 10h18"/></svg>Programación</button>
   <button data-group="mov" onclick="showGroup('mov')"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>Movimientos</button>
   <button data-group="hyrox" onclick="showGroup('hyrox')"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 21V3"/><path d="M5 4h13l-3 4 3 4H5"/></svg>HYROX</button>
+  <button data-group="messages" onclick="showGroup('messages')" id="messagesTabBtn"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Mensajes<span id="messagesUnreadDot" class="unread-dot" style="display:none;"></span></button>
 </nav>
 <nav class="subnav" id="subnav-wod" style="display:none;">
   <button onclick="showView('wod')" data-tab="wod">WOD</button>
@@ -1403,9 +1436,10 @@ const UX01_VIEW_GROUP = {
   scores:'scores', body:'scores', skills:'scores', analysis:'scores',
   prog:'prog', athletes:'prog',
   hyrox:'hyrox',
+  messages:'messages',
 };
 const UX01_GRUPO_VISTA_DEFAULT = { wod:'wod', rm:'rm', scores:'scores', prog:'prog' };
-const UX01_GRUPOS_SIN_SUBMENU = new Set(['home','mov','hyrox']);
+const UX01_GRUPOS_SIN_SUBMENU = new Set(['home','mov','hyrox','messages']);
 let UX01_ULTIMA_VISTA_POR_GRUPO = {};
 
 function showGroup(grupo){
@@ -1454,6 +1488,7 @@ function showView(id){
   }
   if(id==='pct') Promise.all([refreshPctData(), refreshRmByMovement()]).then(renderPctTable);
   if(id==='hyrox'){ renderHyroxSplitsGrid(); renderHyroxStandardsTable(); renderHyroxHistory(); }
+  if(id==='messages') openMessagesView();
   if(id==='wod'){ loadTodayReadiness(); renderActiveProgramCard(); loadWod(); renderCrossfitHistory(); }
   if(id==='prog'){
     const isCoach = currentProfile && currentProfile.role==='coach';
@@ -10400,6 +10435,132 @@ async function delHyroxResult(id){
   await renderHyroxHistory();
 }
 
+/* ---------------- MENSAJES (coach-alumno) ---------------- */
+// Una conversación por alumno (athlete_id identifica el hilo completo — el
+// coach siempre es el único coach asignado a ese alumno, no hace falta
+// guardarlo aparte). sender_id distingue quién escribió cada mensaje. Sin
+// realtime: se refresca al entrar a la vista, al enviar, y al volver de un
+// hilo — igual que el resto de la app (ninguna otra pantalla usa websockets).
+let _messagesSelectedAthleteId = null;
+function openMessagesView(){
+  const isCoach = currentProfile && currentProfile.role === 'coach';
+  if(isCoach){
+    document.getElementById('messagesBackBtn').style.display = _messagesSelectedAthleteId ? 'block' : 'none';
+    if(_messagesSelectedAthleteId){
+      document.getElementById('messagesConversationsCard').style.display = 'none';
+      document.getElementById('messagesThreadCard').style.display = 'block';
+      renderMessageThread(_messagesSelectedAthleteId);
+    } else {
+      document.getElementById('messagesConversationsCard').style.display = 'block';
+      document.getElementById('messagesThreadCard').style.display = 'none';
+      renderMessagesConversations();
+    }
+  } else {
+    document.getElementById('messagesConversationsCard').style.display = 'none';
+    document.getElementById('messagesThreadCard').style.display = 'block';
+    document.getElementById('messagesBackBtn').style.display = 'none';
+    renderMessageThread(currentUser.id);
+  }
+}
+async function renderMessagesConversations(){
+  const el = document.getElementById('messagesConversationsList');
+  el.innerHTML = '<p class="muted" style="text-align:center;"><span class="spinner-inline" aria-hidden="true"></span>Cargando conversaciones...</p>';
+  const { data: athletes } = await sb.from('profiles').select('id, full_name').eq('role','athlete').eq('coach_id', currentUser.id);
+  if(!athletes || !athletes.length){ el.innerHTML = emptyStateHtml('Todavía no tienes alumnos.'); return; }
+  const athleteIds = athletes.map(a=>a.id);
+  const { data: msgs } = await sb.from('messages').select('*').in('athlete_id', athleteIds).order('created_at', {ascending:true});
+  const byAthlete = {};
+  (msgs||[]).forEach(m=>{ (byAthlete[m.athlete_id] = byAthlete[m.athlete_id] || []).push(m); });
+  const rows = athletes.map(a=>{
+    const thread = byAthlete[a.id] || [];
+    const last = thread[thread.length-1];
+    const unread = thread.filter(m=>m.sender_id!==currentUser.id && !m.read_at).length;
+    return { athlete:a, last, unread, lastDate: last ? new Date(last.created_at) : new Date(0) };
+  }).sort((a,b)=> b.lastDate - a.lastDate);
+  el.innerHTML = rows.map(r=>`
+    <button type="button" class="conv-item" onclick="openMessageThread('${r.athlete.id}')">
+      <span>
+        <span>${escapeHtml(r.athlete.full_name||'Alumno')}</span>
+        <div class="conv-preview">${r.last ? escapeHtml(r.last.body) : 'Sin mensajes todavía'}</div>
+      </span>
+      ${r.unread ? `<span class="conv-unread-badge">${r.unread}</span>` : ''}
+    </button>`).join('');
+}
+function openMessageThread(athleteId){
+  _messagesSelectedAthleteId = athleteId;
+  openMessagesView();
+}
+function closeMessageThread(){
+  _messagesSelectedAthleteId = null;
+  openMessagesView();
+}
+async function renderMessageThread(athleteId){
+  const list = document.getElementById('messagesThreadList');
+  list.innerHTML = '<p class="muted" style="text-align:center;"><span class="spinner-inline" aria-hidden="true"></span>Cargando mensajes...</p>';
+  const isCoach = currentProfile && currentProfile.role === 'coach';
+  const titleEl = document.getElementById('messagesThreadTitle');
+  if(isCoach){
+    const { data: a } = await sb.from('profiles').select('full_name').eq('id', athleteId).maybeSingle();
+    titleEl.textContent = a ? a.full_name : 'Mensajes';
+  } else {
+    titleEl.textContent = (currentProfile && currentProfile.coach_id)
+      ? (await sb.from('profiles').select('full_name').eq('id', currentProfile.coach_id).maybeSingle()).data?.full_name || 'Tu coach'
+      : 'Tu coach';
+  }
+  const { data: msgs, error } = await sb.from('messages').select('*').eq('athlete_id', athleteId).order('created_at', {ascending:true});
+  if(error){ list.innerHTML = `<p class="muted">No se pudieron cargar los mensajes: ${error.message}</p>`; return; }
+  const rows = msgs || [];
+  list.innerHTML = rows.length ? rows.map(m=>{
+    const mine = m.sender_id === currentUser.id;
+    const time = new Date(m.created_at).toLocaleString('es-CL', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
+    return `<div class="msg-row ${mine?'mine':''}"><div><div class="msg-bubble">${escapeHtml(m.body)}</div><div class="msg-meta">${time}</div></div></div>`;
+  }).join('') : '<p class="muted" style="text-align:center;">Todavía no hay mensajes. Escribe el primero.</p>';
+  list.scrollTop = list.scrollHeight;
+
+  const unreadIds = rows.filter(m=>m.sender_id!==currentUser.id && !m.read_at).map(m=>m.id);
+  if(unreadIds.length){
+    await sb.from('messages').update({read_at: new Date().toISOString()}).in('id', unreadIds);
+  }
+  refreshUnreadMessagesBadge();
+}
+async function sendMessage(btn){
+  const athleteId = (currentProfile && currentProfile.role === 'coach') ? _messagesSelectedAthleteId : currentUser.id;
+  if(!athleteId) return;
+  const input = document.getElementById('messageInput');
+  const body = input.value.trim();
+  if(!body) return;
+  if(btn.disabled) return; // mismo criterio que el resto de los botones de envío — evita doble-tap
+  btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Enviando...';
+  try{
+    const { error } = await sb.from('messages').insert({ athlete_id: athleteId, sender_id: currentUser.id, body });
+    if(error){ toast('Error al enviar: '+error.message, 'error'); return; }
+    input.value = '';
+    await renderMessageThread(athleteId);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+async function refreshUnreadMessagesBadge(){
+  const dot = document.getElementById('messagesUnreadDot');
+  if(!dot || !currentUser) return;
+  let count = 0;
+  if(currentProfile && currentProfile.role === 'coach'){
+    const { data: athletes } = await sb.from('profiles').select('id').eq('role','athlete').eq('coach_id', currentUser.id);
+    const athleteIds = (athletes||[]).map(a=>a.id);
+    if(athleteIds.length){
+      const { data } = await sb.from('messages').select('id').in('athlete_id', athleteIds).is('read_at', null).neq('sender_id', currentUser.id);
+      count = (data||[]).length;
+    }
+  } else {
+    const { data } = await sb.from('messages').select('id').eq('athlete_id', currentUser.id).is('read_at', null).neq('sender_id', currentUser.id);
+    count = (data||[]).length;
+  }
+  dot.style.display = count ? 'block' : 'none';
+}
+
 /* ---------------- SUPABASE: config + auth ---------------- */
 const APP_VERSION = 'v7.19-fase18-completa';
 // Fix (auditoría visual/UX): APP_VERSION es un identificador de fase de
@@ -10622,6 +10783,7 @@ async function onLoggedIn(user){
   await loadWod();
   await Promise.all([refreshPctData(), refreshRmByMovement()]);
   renderPctTable();
+  refreshUnreadMessagesBadge();
   initAutocomplete();
   ['rmMovement','wodName','wodDetail','scoreName'].forEach(id=>{
     const el = document.getElementById(id);
