@@ -8937,11 +8937,20 @@ function initAutocomplete(){
   document.body.appendChild(box);
 }
 let acTargetEl = null;
+// Fix (revisión de eficiencia, mismo hallazgo que renderMov()): esta lista se
+// reconstruía entera (flat + concat + dedup de ~350 términos) en CADA tecla
+// tipeada en los 4 campos con autocompletado (movimiento RM, nombre/detalle
+// de WOD, nombre de score) — MOVEMENTS/BENCHMARK_WODS son datos estáticos,
+// nunca cambian en runtime, así que se calcula una sola vez y se cachea.
+let _allMovementTermsCache = null;
 function getAllMovementTerms(){
-  const terms = Object.values(MOVEMENTS).flat()
-    .concat(BENCHMARK_WODS.girls.map(w=>w.name))
-    .concat(BENCHMARK_WODS.hero.map(w=>w.name));
-  return [...new Set(terms)];
+  if(!_allMovementTermsCache){
+    const terms = Object.values(MOVEMENTS).flat()
+      .concat(BENCHMARK_WODS.girls.map(w=>w.name))
+      .concat(BENCHMARK_WODS.hero.map(w=>w.name));
+    _allMovementTermsCache = [...new Set(terms)];
+  }
+  return _allMovementTermsCache;
 }
 function getCurrentPhrase(el){
   const text = el.value, caret = el.selectionStart;
