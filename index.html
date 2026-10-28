@@ -598,7 +598,7 @@
       <input type="text" id="wodName" placeholder="Ej: AMRAP 20'">
       <label>Detalle</label>
       <textarea id="wodDetail" placeholder="Movimientos, reps, cargas..."></textarea>
-      <button class="btn" onclick="saveWod()">Guardar</button>
+      <button class="btn" onclick="saveWod(this)">Guardar</button>
     </div>
     <div class="card" id="wodSavedCard" style="display:none;">
       <h3>Guardado</h3>
@@ -1827,15 +1827,29 @@ function renderHomeSessionCompact(){
 }
 
 /* ---------------- WOD (Supabase: wod_notes) ---------------- */
-async function saveWod(){
-  const name = document.getElementById('wodName').value;
-  const detail = document.getElementById('wodDetail').value;
-  const { error } = await sb.from('wod_notes').upsert({
-    user_id: currentUser.id, name, detail, updated_at: new Date().toISOString()
-  });
-  if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
-  document.getElementById('wodSavedCard').style.display='block';
-  document.getElementById('wodSavedText').textContent = `${name} — ${detail}`;
+async function saveWod(btn){
+  // Fix (auditoría visual/UX): mismo criterio que saveRM/saveBody/saveSkills/
+  // saveScore/saveProgram — sin el peso/duplicado (esto es upsert de una sola
+  // fila por usuario, no inserta de más), pero sí tenía el mismo hueco de
+  // feedback: tocar "Guardar" no mostraba ninguna señal de que algo pasó
+  // mientras se esperaba la respuesta del servidor.
+  if(btn.disabled) return;
+  btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Guardando...';
+  try{
+    const name = document.getElementById('wodName').value;
+    const detail = document.getElementById('wodDetail').value;
+    const { error } = await sb.from('wod_notes').upsert({
+      user_id: currentUser.id, name, detail, updated_at: new Date().toISOString()
+    });
+    if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
+    document.getElementById('wodSavedCard').style.display='block';
+    document.getElementById('wodSavedText').textContent = `${name} — ${detail}`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
 }
 async function loadWod(){
   const { data } = await sb.from('wod_notes').select('*').eq('user_id', currentUser.id).maybeSingle();
