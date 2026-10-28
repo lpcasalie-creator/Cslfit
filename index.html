@@ -991,7 +991,7 @@
           <option value="coached">Con programación mía</option>
         </select>
       </div>
-      <button class="btn secondary" style="margin-top:10px;" onclick="generateInviteCode()">Generar código</button>
+      <button class="btn secondary" style="margin-top:10px;" id="genInviteBtn" onclick="generateInviteCode(this)">Generar código</button>
       <p id="inviteResult" style="font-size:13px; margin-top:10px;"></p>
       <div id="inviteCodesList" style="margin-top:14px;"></div>
     </div>
@@ -8647,7 +8647,16 @@ function toggleInvitePlanField(){
 function randomCodeSuffix(){
   return Math.random().toString(36).slice(2, 6).toUpperCase();
 }
-async function generateInviteCode(){
+async function generateInviteCode(btn){
+  // Fix (auditoría de eficiencia/datos, mismo criterio que saveRM/saveScore/etc.):
+  // sin esto, un doble-tap crea DOS códigos de invitación distintos (cada uno
+  // con su propio sufijo aleatorio) para el mismo alumno — ambos quedan
+  // activos y usables, un código de invitación sobrante dando vueltas.
+  if(btn.disabled) return;
+  btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Generando...';
+  try{
   const note = document.getElementById('inviteNote').value.trim();
   const athleteEmail = document.getElementById('inviteEmail').value.trim();
   const isCoachInvite = currentProfile && currentProfile.is_super_admin && document.getElementById('inviteRole').value==='coach';
@@ -8709,6 +8718,10 @@ ${currentProfile && currentProfile.brand_handle ? currentProfile.brand_handle+' 
   document.getElementById('inviteNote').value = '';
   document.getElementById('inviteEmail').value = '';
   await renderInviteCodesList();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
 }
 function copyInviteLink(link){
   navigator.clipboard.writeText(link).then(()=>{
