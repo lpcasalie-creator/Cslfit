@@ -8856,11 +8856,12 @@ async function toggleAthleteProgress(athleteId){
   el.innerHTML = '<p class="muted" style="text-align:center;"><span class="spinner-inline" aria-hidden="true"></span>Cargando progreso...</p>';
   el.style.display = 'block';
 
-  const [rms, bodies, skills, scoresData] = await Promise.all([
+  const [rms, bodies, skills, scoresData, hyroxData] = await Promise.all([
     sb.from('scores').select('*').eq('user_id', athleteId).eq('score_type','load').order('created_at', {ascending:false}).limit(20),
     sb.from('body_entries').select('*').eq('user_id', athleteId).order('entry_date', {ascending:false}).limit(5),
     sb.from('skills_entries').select('*').eq('user_id', athleteId).order('entry_date', {ascending:false}).limit(1),
     sb.from('scores').select('*').eq('user_id', athleteId).order('created_at', {ascending:false}).limit(15),
+    sb.from('hyrox_results').select('*').eq('user_id', athleteId).order('race_date', {ascending:false}).limit(5),
   ]);
 
   const sec = (title, content) => `<div style="margin-bottom:12px;">
@@ -8903,6 +8904,13 @@ async function toggleAthleteProgress(athleteId){
     html += sec('Scores recientes', sc.slice(0,8).map(s=>
       row(`${escapeHtml(s.name)} — <b>${escapeHtml(s.result)}</b> <span class="muted">(${(s.created_at||'').slice(0,10)})</span>`)).join(''));
   } else html += sec('Scores', '<p class="muted" style="font-size:12px;">Sin scores.</p>');
+
+  // HYROX: carreras recientes (ver pestaña HYROX del atleta)
+  const hx = hyroxData.data || [];
+  if(hx.length){
+    html += sec('HYROX (carreras recientes)', hx.map(r=>
+      row(`${r.race_date} — <b>${fmt(r.total_seconds)}</b> <span class="muted">(${HYROX_DIVISION_LABELS[r.division]||r.division}${r.race_name?' · '+escapeHtml(r.race_name):''})</span>`)).join(''));
+  } else html += sec('HYROX', '<p class="muted" style="font-size:12px;">Sin carreras registradas.</p>');
 
   el.innerHTML = html;
 }
