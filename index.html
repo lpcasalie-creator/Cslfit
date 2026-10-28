@@ -841,7 +841,7 @@
         <h3>Importar programa</h3>
         <p class="muted">Si otro coach te compartió un archivo .json, súbelo aquí.</p>
         <input type="file" id="progImportFile" accept="application/json" aria-label="Archivo del programa a importar (.json)">
-        <button class="btn secondary" onclick="importProgramFile()">Importar</button>
+        <button class="btn secondary" onclick="importProgramFile(this)">Importar</button>
       </div>
 
       <div class="card">
@@ -1289,7 +1289,7 @@
 
       <label style="margin-top:14px;">Movimiento</label>
       <input type="text" id="barMovementName" placeholder="Ej: Snatch, Clean, Jerk">
-      <button class="btn secondary" style="margin-top:8px;" onclick="saveBarAnalysis()">Guardar análisis</button>
+      <button class="btn secondary" style="margin-top:8px;" onclick="saveBarAnalysis(this)">Guardar análisis</button>
     </div>
 
     <div class="card">
@@ -8285,54 +8285,71 @@ async function exportProgram(id){
   URL.revokeObjectURL(url);
 }
 
-function importProgramFile(){
+function importProgramFile(btn){
   const file = document.getElementById('progImportFile').files[0];
   if(!file) return;
+  // Fix (auditoría de eficiencia/datos, mismo criterio que el resto de los
+  // botones de guardar): la lectura del archivo es asíncrona (FileReader) y
+  // esta función en sí es sincrónica — un doble-tap arrancaba DOS lecturas en
+  // paralelo, cada una terminando en su propio insert, dos programas
+  // idénticos importados. Se deshabilita el botón ya mismo (no al entrar al
+  // callback, que es tarde) y se reactiva pase lo que pase (éxito, JSON
+  // inválido, formato inválido, o error de red) en el finally del callback.
+  if(btn.disabled) return;
+  btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Importando...';
   const reader = new FileReader();
   reader.onload = async (e) => {
-    let p;
     try{
-      p = JSON.parse(e.target.result);
-    }catch(err){
-      // Analizando la app como usuaria/o: un archivo corrupto o que no es JSON
-      // (ej. alguien sube el .pdf/.docx equivocado, o el .json se truncó al
-      // compartirlo) mostraba el mensaje crudo de JSON.parse tal cual —
-      // "Expected property name or '}' in JSON at position 2 (line 1 column
-      // 3)" — jerga de parser que no le dice nada a un coach. Mismo patrón que
-      // ya usa el "formato inválido" de más abajo: un mensaje en español que
-      // describe el problema real, no la excepción interna.
-      toast('No se pudo importar el archivo: no es un archivo de programa (.json) válido.', 'error');
-      return;
-    }
-    try{
-      if(!p.name || !Array.isArray(p.data)) throw new Error('formato inválido');
-      // Fix (pedido de Luis, prueba real de exportar/reimportar un programa):
-      // antes se perdía `sessions` al reimportar — el texto quedaba igual, pero
-      // el programa reimportado ya no servía como fuente completa de "Continuar
-      // desde programa anterior" (esa función necesita `sessions`, no `data`).
-      // Mismo reintento defensivo que ya usa saveProgram() por si la columna
-      // `sessions` aún no existe en Supabase.
-      const bodyImport = {
-        coach_id: currentUser.id,
-        name: p.name, kind: p.kind||'grupal',
-        athlete_name: p.athlete_name || p.athleteName || null,
-        equipment: p.equipment || null,
-        session_duration: p.session_duration || p.sessionDuration || null,
-        weeks: p.weeks, data: p.data, sessions: p.sessions || null
-      };
-      let { error } = await sb.from('programs').insert(bodyImport);
-      if(error && /sessions/i.test(error.message || '') && /column|schema|does not exist/i.test(error.message || '')){
-        const { sessions: _omitido, ...sinSessions } = bodyImport;
-        ({ error } = await sb.from('programs').insert(sinSessions));
+      let p;
+      try{
+        p = JSON.parse(e.target.result);
+      }catch(err){
+        // Analizando la app como usuaria/o: un archivo corrupto o que no es JSON
+        // (ej. alguien sube el .pdf/.docx equivocado, o el .json se truncó al
+        // compartirlo) mostraba el mensaje crudo de JSON.parse tal cual —
+        // "Expected property name or '}' in JSON at position 2 (line 1 column
+        // 3)" — jerga de parser que no le dice nada a un coach. Mismo patrón que
+        // ya usa el "formato inválido" de más abajo: un mensaje en español que
+        // describe el problema real, no la excepción interna.
+        toast('No se pudo importar el archivo: no es un archivo de programa (.json) válido.', 'error');
+        return;
       }
-      if(error) throw error;
-      await renderProgList();
-      await populateActiveProgSelect();
-      document.getElementById('progImportFile').value='';
-    }catch(err){
-      toast('No se pudo importar el archivo: '+err.message, 'error');
+      try{
+        if(!p.name || !Array.isArray(p.data)) throw new Error('formato inválido');
+        // Fix (pedido de Luis, prueba real de exportar/reimportar un programa):
+        // antes se perdía `sessions` al reimportar — el texto quedaba igual, pero
+        // el programa reimportado ya no servía como fuente completa de "Continuar
+        // desde programa anterior" (esa función necesita `sessions`, no `data`).
+        // Mismo reintento defensivo que ya usa saveProgram() por si la columna
+        // `sessions` aún no existe en Supabase.
+        const bodyImport = {
+          coach_id: currentUser.id,
+          name: p.name, kind: p.kind||'grupal',
+          athlete_name: p.athlete_name || p.athleteName || null,
+          equipment: p.equipment || null,
+          session_duration: p.session_duration || p.sessionDuration || null,
+          weeks: p.weeks, data: p.data, sessions: p.sessions || null
+        };
+        let { error } = await sb.from('programs').insert(bodyImport);
+        if(error && /sessions/i.test(error.message || '') && /column|schema|does not exist/i.test(error.message || '')){
+          const { sessions: _omitido, ...sinSessions } = bodyImport;
+          ({ error } = await sb.from('programs').insert(sinSessions));
+        }
+        if(error) throw error;
+        await renderProgList();
+        await populateActiveProgSelect();
+        document.getElementById('progImportFile').value='';
+      }catch(err){
+        toast('No se pudo importar el archivo: '+err.message, 'error');
+      }
+    } finally {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
     }
   };
+  reader.onerror = () => { btn.disabled = false; btn.textContent = textoOriginal; };
   reader.readAsText(file);
 }
 
@@ -10070,30 +10087,42 @@ function calculateBarMetrics(){
   drawSimpleLineChart('barVelChart', velocities);
 }
 
-async function saveBarAnalysis(){
+async function saveBarAnalysis(btn){
   if(!_lastBarMetrics){ toast('Primero calcula las métricas.', 'info'); return; }
-  const movement = document.getElementById('barMovementName').value.trim() || 'Sin nombre';
-  const payload = {
-    user_id: currentUser.id,
-    movement,
-    peak_velocity: _lastBarMetrics.peakV,
-    avg_velocity: _lastBarMetrics.avgV,
-    points: barPoints,
-    calib_ratio: barCalibRatio,
-  };
-  let { error } = await sb.from('wl_analysis').insert(payload);
-  // La columna `calib_ratio` puede no existir todavía en Supabase (se agregó para
-  // poder reconstruir el gráfico de velocidad al revisar un análisis guardado).
-  // Si falta, se reintenta sin ella para que guardar nunca deje de funcionar —
-  // mismo criterio defensivo que ya usa saveActiveProgram con `sessions`.
-  if(error && /calib_ratio/i.test(error.message || '') && /column|schema|does not exist/i.test(error.message || '')){
-    const { calib_ratio: _omitido, ...sinCalib } = payload;
-    console.warn('La columna `calib_ratio` aún no existe en Supabase; se guarda sin ella (no se podrá revisar el gráfico después). Ejecuta: ALTER TABLE wl_analysis ADD COLUMN calib_ratio numeric;');
-    ({ error } = await sb.from('wl_analysis').insert(sinCalib));
+  // Fix (auditoría de eficiencia/datos, mismo criterio que el resto de los
+  // botones de guardar): sin esto, un doble-tap guardaba DOS análisis
+  // idénticos del mismo video.
+  if(btn.disabled) return;
+  btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Guardando...';
+  try{
+    const movement = document.getElementById('barMovementName').value.trim() || 'Sin nombre';
+    const payload = {
+      user_id: currentUser.id,
+      movement,
+      peak_velocity: _lastBarMetrics.peakV,
+      avg_velocity: _lastBarMetrics.avgV,
+      points: barPoints,
+      calib_ratio: barCalibRatio,
+    };
+    let { error } = await sb.from('wl_analysis').insert(payload);
+    // La columna `calib_ratio` puede no existir todavía en Supabase (se agregó para
+    // poder reconstruir el gráfico de velocidad al revisar un análisis guardado).
+    // Si falta, se reintenta sin ella para que guardar nunca deje de funcionar —
+    // mismo criterio defensivo que ya usa saveActiveProgram con `sessions`.
+    if(error && /calib_ratio/i.test(error.message || '') && /column|schema|does not exist/i.test(error.message || '')){
+      const { calib_ratio: _omitido, ...sinCalib } = payload;
+      console.warn('La columna `calib_ratio` aún no existe en Supabase; se guarda sin ella (no se podrá revisar el gráfico después). Ejecuta: ALTER TABLE wl_analysis ADD COLUMN calib_ratio numeric;');
+      ({ error } = await sb.from('wl_analysis').insert(sinCalib));
+    }
+    if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
+    document.getElementById('barMovementName').value='';
+    await renderBarAnalysisList();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
   }
-  if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
-  document.getElementById('barMovementName').value='';
-  await renderBarAnalysisList();
 }
 
 let _barAnalysisCache = [];
