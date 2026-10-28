@@ -840,7 +840,7 @@
       <div class="card">
         <h3>Importar programa</h3>
         <p class="muted">Si otro coach te compartió un archivo .json, súbelo aquí.</p>
-        <input type="file" id="progImportFile" accept="application/json">
+        <input type="file" id="progImportFile" accept="application/json" aria-label="Archivo del programa a importar (.json)">
         <button class="btn secondary" onclick="importProgramFile()">Importar</button>
       </div>
 
@@ -1016,7 +1016,7 @@
          la lista de movimientos; si no, dejaba de pegarse apenas se pasaba esa
          tarjeta. -->
     <div style="position:sticky; top:var(--header-h); z-index:10; background:var(--bg); padding:10px 18px; margin:0 -18px;">
-      <input type="text" id="movSearch" placeholder="Buscar movimiento..." oninput="renderMovListDebounced()" style="margin:0;">
+      <input type="text" id="movSearch" placeholder="Buscar movimiento..." aria-label="Buscar movimiento" oninput="renderMovListDebounced()" style="margin:0;">
     </div>
     <div class="card">
       <button class="btn has-icon" style="margin-top:0;" onclick="openScalingGuide()"><svg class="btnicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Guía de escalamiento completa (imprimir / PDF)</button>
@@ -1176,7 +1176,7 @@
       <h2 id="messagesThreadTitle">Mensajes</h2>
       <div id="messagesThreadList" style="display:flex; flex-direction:column; gap:8px; max-height:50vh; overflow-y:auto; margin:10px 0 14px; padding-right:2px;"></div>
       <div style="display:flex; gap:8px;">
-        <input type="text" id="messageInput" placeholder="Escribe un mensaje..." style="margin:0; flex:1;"
+        <input type="text" id="messageInput" placeholder="Escribe un mensaje..." aria-label="Escribe un mensaje" style="margin:0; flex:1;"
             onkeydown="if(event.key==='Enter'){ event.preventDefault(); sendMessage(document.getElementById('messageSendBtn')); }">
         <button class="btn small" id="messageSendBtn" style="margin:0; width:auto; padding:10px 16px;" onclick="sendMessage(this)">Enviar</button>
       </div>
@@ -8866,7 +8866,7 @@ async function renderAthletesList(){
         </span>
       </div>
       <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-        <select style="width:auto; font-size:11px; padding:4px 38px 4px 8px; border-color:var(--lime); color:var(--lime);" onchange="changeAthletePlan('${a.id}', this.value)">
+        <select style="width:auto; font-size:11px; padding:4px 38px 4px 8px; border-color:var(--lime); color:var(--lime);" aria-label="Tipo de plan de ${escapeHtml(a.full_name || a.email)}" onchange="changeAthletePlan('${a.id}', this.value)">
           <option value="tracking" ${a.plan!=='coached'?'selected':''}>Solo seguimiento</option>
           <option value="coached" ${a.plan==='coached'?'selected':''}>Con programación</option>
         </select>
