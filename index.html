@@ -2531,7 +2531,8 @@ async function renderRMHistory(){
 }
 async function delRM(id){
   if(!confirmDelete('¿Borrar este registro de 1RM? No se puede deshacer.')) return;
-  await sb.from('scores').delete().eq('id', id);
+  const { error } = await sb.from('scores').delete().eq('id', id);
+  if(error){ toast('Error al borrar: '+error.message, 'error'); return; }
   await renderRMHistory();
   await populateRMChartMovements();
   await renderScores();
@@ -2803,7 +2804,8 @@ async function renderBodyList(){
 }
 async function delBody(id){
   if(!confirmDelete('¿Borrar esta medición? No se puede deshacer.')) return;
-  await sb.from('body_entries').delete().eq('id', id);
+  const { error } = await sb.from('body_entries').delete().eq('id', id);
+  if(error){ toast('Error al borrar: '+error.message, 'error'); return; }
   await renderBodyList();
   await populateBodyChart();
 }
@@ -2972,7 +2974,8 @@ function renderSkillsHistory(){
 }
 async function delSkills(id){
   if(!confirmDelete('¿Borrar esta evaluación de skills? No se puede deshacer.')) return;
-  await sb.from('skills_entries').delete().eq('id', id);
+  const { error } = await sb.from('skills_entries').delete().eq('id', id);
+  if(error){ toast('Error al borrar: '+error.message, 'error'); return; }
   await refreshSkillsHistory();
   populateSkillsDates();
   renderSkillsHistory();
@@ -8615,7 +8618,8 @@ async function renderInviteCodesList(){
 }
 async function deleteInviteCode(code){
   if(!confirmDelete(`¿Borrar el código ${code}?`)) return;
-  await sb.from('invite_codes').delete().eq('code', code).eq('created_by', currentUser.id);
+  const { error } = await sb.from('invite_codes').delete().eq('code', code).eq('created_by', currentUser.id);
+  if(error){ toast('Error al borrar: '+error.message, 'error'); return; }
   await renderInviteCodesList();
 }
 
@@ -10055,7 +10059,8 @@ function toggleBarAnalysisDetail(id){
 
 async function deleteBarAnalysis(id){
   if(!confirmDelete('¿Borrar este análisis de barra? No se puede deshacer.')) return;
-  await sb.from('wl_analysis').delete().eq('id', id);
+  const { error } = await sb.from('wl_analysis').delete().eq('id', id);
+  if(error){ toast('Error al borrar: '+error.message, 'error'); return; }
   await renderBarAnalysisList();
 }
 
@@ -10186,7 +10191,8 @@ async function renderScores(){
 }
 async function delScore(id){
   if(!confirmDelete('¿Borrar este score? No se puede deshacer.')) return;
-  await sb.from('scores').delete().eq('id', id);
+  const { error } = await sb.from('scores').delete().eq('id', id);
+  if(error){ toast('Error al borrar: '+error.message, 'error'); return; }
   await renderScores();
   await populateScoreChartMovements();
 }
@@ -10330,7 +10336,8 @@ function drawHyroxChart(){
 }
 async function delHyroxResult(id){
   if(!confirmDelete('¿Borrar esta carrera? No se puede deshacer.')) return;
-  await sb.from('hyrox_results').delete().eq('id', id);
+  const { error } = await sb.from('hyrox_results').delete().eq('id', id);
+  if(error){ toast('Error al borrar: '+error.message, 'error'); return; }
   await renderHyroxHistory();
 }
 
