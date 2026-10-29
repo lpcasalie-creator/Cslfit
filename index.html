@@ -3448,23 +3448,45 @@ const PRINCIPIANTE_DEFAULT = {
   skill: "Handstand Hold contra muro (base antes de progresar a skills avanzados)",
 };
 function _restrict(mov, restriction, patternKey, level, wi, ti){
-  if(level==='principiante' && PRINCIPIANTE_EXCLUDE[patternKey] && PRINCIPIANTE_EXCLUDE[patternKey].includes(mov)){
-    return PRINCIPIANTE_DEFAULT[patternKey] || mov;
+  // Fix (sweep combinado restricción+principiante, 59 hits antes de este fix):
+  // las dos ramas de sustitución para principiante (PRINCIPIANTE_EXCLUDE/
+  // PRINCIPIANTE_DEFAULT acá abajo, y el BEGINNER_SUB de _scaleForBeginner)
+  // devolvían su sustituto de inmediato SIN volver a chequear la restricción
+  // de lesión activa — un atleta principiante CON restricción de hombro podía
+  // recibir "Handstand Hold contra muro" (el propio sustituto de skill) aunque
+  // ese movimiento esté marcado como restringido para hombro en el catálogo.
+  // Se reordena: primero se resuelve el movimiento final según nivel
+  // (principiante-exclude + escalamiento/BEGINNER_BAN), y la restricción se
+  // chequea UNA sola vez, al final, sobre ESE resultado — así cubre cualquier
+  // sustituto que haya introducido la lógica de principiante en el camino.
+  let m = mov;
+  if(level==='principiante' && PRINCIPIANTE_EXCLUDE[patternKey] && PRINCIPIANTE_EXCLUDE[patternKey].includes(m)){
+    m = PRINCIPIANTE_DEFAULT[patternKey] || m;
   }
+  m = _scaleForBeginner(m, wi||0, level, patternKey);
   if(restriction && restriction!=='ninguna'){
     // Fase 2D: consulta migrada de RESTRICTION_EXCLUDE[restriction].includes(mov) a
     // hasRestriction() (fuente: MOVEMENT_CATALOG). RESTRICTION_EXCLUDE sigue existiendo
     // intacta como estructura original — no se modificó ni se usa acá.
-    if(hasRestriction(mov, restriction)){
+    // Fix: `m` puede venir anotado por el escalamiento de principiante (ej.
+    // "Strict Press (carga ligera, foco técnica)") — hasRestriction()/getMovement()
+    // buscan coincidencia EXACTA en el catálogo y fallan en silencio con ese
+    // string anotado (devuelven null -> "sin restricción", falso). identifyMovement()
+    // busca por PREFIJO (misma función que ya usa el resto del archivo para
+    // resolver texto anotado/sustituido a su movimiento canónico) y sí encuentra
+    // el "Strict Press" real debajo de la anotación.
+    const resuelto = identifyMovement(m);
+    const estaRestringido = resuelto ? resuelto.restrictions.includes(restriction) : hasRestriction(m, restriction);
+    if(estaRestringido){
       const alts = RESTRICTION_DEFAULT[restriction] && RESTRICTION_DEFAULT[restriction][patternKey];
       // Fase 26: mismo fix que _pickSafe (ver ese comentario) — _movIdx crudo
       // recorría estas alternativas (4 típicas) en el mismo orden fijo semana
       // tras semana para un atleta con restricción activa.
       if(alts) return Array.isArray(alts) ? _pick(alts, _crossfitMix32(((wi||0)*2654435761 + (ti||0)*40503 + _crossfit17a2SrcKeyId(patternKey)*97 + 555) >>> 0)) : alts;
-      return mov;
+      return m;
     }
   }
-  return _scaleForBeginner(mov, wi||0, level, patternKey);
+  return m;
 }
 // Fase 26 (mismo bug de fondo que ya corrigió _crossfit17a2Pick para Fuerza/
 // Skills de CrossFit — ver ese comentario para el análisis completo): _movIdx
@@ -6234,7 +6256,29 @@ function _crossfit17a2Pick(pool, wi, ti, opts, srcKey){
   const wiMixed = _crossfitMix32((wi*2654435761 + ti*40503 + _crossfit17a2SrcKeyId(srcKey)*97) >>> 0);
   let mov = _pickDedup(pool, wiMixed, 0, opts, srcKey);
   if(opts.level==='principiante' && _crossfitDifficulty(mov)==='ADVANCED' && CROSSFIT_BEGINNER_SUB_LOCAL[srcKey]){
-    const subPool = CROSSFIT_BEGINNER_SUB_LOCAL[srcKey];
+    let subPool = CROSSFIT_BEGINNER_SUB_LOCAL[srcKey];
+    // Fix (mismo hallazgo que _restrict — sweep combinado restricción+
+    // principiante): este sustituto nunca se revalidaba contra la restricción
+    // de lesión activa — "Handstand Hold contra muro"/"Wall Walk"/etc. del
+    // pool dinámico de skill BEGINNER pueden estar marcados como restringidos
+    // para hombro en el catálogo, y se servían igual. Confirmado con el pool
+    // real: para srcKey='skill' + restricción hombro, las 12 de 12 entradas
+    // del pool dinámico están restringidas (la gimnasia de skill principiante
+    // es casi toda invertida/overhead) — filtrar deja 0 candidatos siempre en
+    // ese caso puntual, así que el fallback no puede ser "quedarse con el pool
+    // sin filtrar" (serviría igual un restringido). Se cae en cambio al mismo
+    // pool de sustitutos por restricción que ya usa _restrict() para ese mismo
+    // srcKey (RESTRICTION_DEFAULT[restriccion][srcKey] — para hombro+skill son
+    // movimientos de movilidad real, sin carga de hombro).
+    if(Array.isArray(subPool) && opts.restriction && opts.restriction!=='ninguna'){
+      const sinRestringidos = subPool.filter(m => !hasRestriction(m, opts.restriction));
+      if(sinRestringidos.length){
+        subPool = sinRestringidos;
+      } else {
+        const altRestriccion = RESTRICTION_DEFAULT[opts.restriction] && RESTRICTION_DEFAULT[opts.restriction][srcKey];
+        if(altRestriccion) subPool = altRestriccion;
+      }
+    }
     // Mismo wiMixed de arriba — antes usaba _movIdx(wi,ti) crudo acá también,
     // mismo riesgo de paseo lineal específicamente para nivel principiante.
     mov = Array.isArray(subPool) ? subPool[wiMixed % subPool.length] : subPool;
