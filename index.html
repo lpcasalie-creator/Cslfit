@@ -2308,6 +2308,7 @@ async function setWeightUnit(unit){
     await sb.from('profiles').update({ weight_unit: unit }).eq('id', currentUser.id);
   }
   renderPctTable();
+  renderHyroxStandardsTable();
   if(_rmHistCache) renderRMHistory();
   const wl = document.getElementById('rmWeightLabel'); if(wl) wl.textContent = `Peso (${unit})`;
   const ph = document.getElementById('pctPrHeader'); if(ph) ph.innerHTML = `Tu PR<br>(${unit})`;
@@ -10227,20 +10228,24 @@ const HYROX_DIVISION_LABELS = {
 // Las 8 postas en el orden oficial real de carrera (intercaladas con las 8
 // carreras de 1km — ver HYROX_SPLITS). SkiErg, Burpee Broad Jump y Rowing son
 // de peso corporal: iguales en todas las divisiones, sin carga que mostrar.
+// Pesos siempre en kg crudo (no string formateada) — fmtWeight() los pasa a
+// lb si el atleta eligió esa unidad, mismo criterio que el resto de la app
+// (RM, % BS). Antes quedaban fijos en kg sin importar currentWeightUnit.
 const HYROX_STATIONS = [
   { n:1, name:'SkiErg',             dist:'1000m',  weight:null },
-  { n:2, name:'Sled Push',          dist:'50m',    weight:{open_w:'102 kg', open_m:'152 kg', pro_w:'152 kg', pro_m:'202 kg'} },
-  { n:3, name:'Sled Pull',          dist:'50m',    weight:{open_w:'78 kg',  open_m:'103 kg', pro_w:'103 kg', pro_m:'153 kg'} },
+  { n:2, name:'Sled Push',          dist:'50m',    weight:{open_w:102, open_m:152, pro_w:152, pro_m:202} },
+  { n:3, name:'Sled Pull',          dist:'50m',    weight:{open_w:78,  open_m:103, pro_w:103, pro_m:153} },
   { n:4, name:'Burpee Broad Jump',  dist:'80m',    weight:null },
   { n:5, name:'Rowing',             dist:'1000m',  weight:null },
-  { n:6, name:'Farmers Carry',      dist:'200m',   weight:{open_w:'16 kg c/mano', open_m:'24 kg c/mano', pro_w:'24 kg c/mano', pro_m:'32 kg c/mano'} },
-  { n:7, name:'Sandbag Lunges',     dist:'100m',   weight:{open_w:'10 kg',  open_m:'20 kg', pro_w:'20 kg', pro_m:'30 kg'} },
-  { n:8, name:'Wall Balls',         dist:'100/75 reps', weight:{open_w:'4kg · 75 reps', open_m:'6kg · 100 reps', pro_w:'6kg · 100 reps', pro_m:'9kg · 100 reps'} },
+  { n:6, name:'Farmers Carry',      dist:'200m',   weight:{open_w:16, open_m:24, pro_w:24, pro_m:32}, suffix:' c/mano' },
+  { n:7, name:'Sandbag Lunges',     dist:'100m',   weight:{open_w:10, open_m:20, pro_w:20, pro_m:30} },
+  { n:8, name:'Wall Balls',         dist:'100/75 reps', weight:{open_w:4, open_m:6, pro_w:6, pro_m:9}, reps:{open_w:75, open_m:100, pro_w:100, pro_m:100} },
 ];
 function renderHyroxStandardsTable(){
+  const fmtDiv = (s, key) => fmtWeight(s.weight[key]) + (s.suffix||'') + (s.reps ? ' · '+s.reps[key]+' reps' : '');
   document.getElementById('hyroxStandardsTable').innerHTML = HYROX_STATIONS.map(s=>{
     const weightLine = s.weight
-      ? `Open W ${s.weight.open_w} · Open M/Pro W ${s.weight.open_m} · Pro M ${s.weight.pro_m}`
+      ? `Open W ${fmtDiv(s,'open_w')} · Open M/Pro W ${fmtDiv(s,'open_m')} · Pro M ${fmtDiv(s,'pro_m')}`
       : 'Peso corporal — mismo para todas las divisiones';
     return `<div style="display:flex; gap:10px; padding:10px 0; border-bottom:1px solid var(--border);">
       <div style="flex:0 0 auto; width:24px; height:24px; border-radius:50%; border:1px solid var(--lime); color:var(--lime);
