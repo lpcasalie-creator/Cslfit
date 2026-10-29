@@ -3235,6 +3235,20 @@ const BEGINNER_SUB = {
   pull_horizontal:'Chest-Supported DB Row',
   olympic_main:'Hang Power Clean con barra vacía (foco técnica)',
   olympic_acc:'Overhead Squat con barra vacía',
+  // Fix (auditoría de seguridad, sweep de nivel principiante): Gimnasia y
+  // Musculación usan claves CORTAS (push/pull/dip/core/legs/posterior), no las
+  // compuestas de Fuerza (push_vertical, pull_vertical...). _scaleForBeginner()
+  // caía en "BEGINNER_SUB[patternKey] || mov" y, al no matchear ninguna clave,
+  // devolvía el movimiento ORIGINAL sin sustituir — un principiante podía
+  // recibir Weighted Pull-up, Butterfly Pull-up, Strict/Deficit HSPU o
+  // Snatch-Grip Deadlift tal cual (confirmado con un sweep de 11959 líneas:
+  // 85 hits en Gimnasia/General/Musculación antes de este fix).
+  push:'Push-up (apoyo completo, foco técnica)',
+  pull:'Ring Row horizontal',
+  dip:'Dip en banco (apoyo, rango controlado)',
+  core:'Hollow Hold (control de tronco, sin movimiento)',
+  legs:'Back Squat (carga moderada, foco técnica)',
+  posterior:'Romanian Deadlift (carga ligera, foco técnica)',
 };
 // Principiante: primero la escalera de progresión real (un escalón por semana, sin llegar
 // a la versión final); si es avanzado y no tiene escalera, se sustituye por algo apropiado.
