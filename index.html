@@ -3130,13 +3130,6 @@ function mkSession(o){
   };
 }
 
-// Detecta el formato de un día guardado: 1=string, 2={fuerza,skills,wod}, 3=estructurado
-function detectSchema(raw){
-  if(typeof raw === 'string') return 1;
-  if(raw && raw.schemaVersion === SESSION_SCHEMA_VERSION) return 3;
-  return 2;
-}
-
 // Reconstruye {fuerza, skills, wod} desde la estructura.
 // En Fase 1A usa `raw` para garantizar texto byte-idéntico.
 function renderBlockLines(block){
@@ -3637,8 +3630,6 @@ function _wodBlock(wi, ti, opts, domain, variant){
   const fmt = (variant||0) === 0 ? `AMRAP ${cap}'` : `${Math.max(3, Math.round(cap/4))} rondas For Time (cap ${cap}')`;
   return `${fmt}:\n${c.join('\n')}`;
 }
-function _fuerzaWod(wi, ti, opts, domain='corto'){ return _wodBlock(wi, ti, opts, domain, 0); }
-
 function _fuerzaDay(patternKey, domain='corto'){
   return function(wi, isTest, opts, ti){
     const n = _blockCount(opts);
@@ -4266,19 +4257,6 @@ const GENERATORS = {
   ],
 };
 
-function _cardioMov(wi, opts){
-  if(opts.restriction==='rodilla'){
-    return opts.equipment==='completo' ? _pick(["Bike Erg 300m","Row 300m","Ski Erg 300m"], _mixIdx(wi, 0, 4)) : "Marcha rápida en el lugar 1' (bajo impacto)";
-  }
-  return _pick(GEN_POOLS.cardio.interval[opts.equipment], _mixIdx(wi, 0, 6));
-}
-function _cardioDist(opts){
-  if(opts.restriction==='rodilla'){
-    return opts.equipment==='completo' ? "300m Bike Erg" : "1' marcha rápida en el lugar";
-  }
-  return "300m";
-}
-
 function _gimnasiaWod(wi, domain, ti, opts){
   const short = [["8 Burpees","10 Sit-ups"],["10 Push-ups","12 Air Squats"],["8 Ring Rows","10 Air Squats"],["10 Sit-ups","10 Air Squats"]];
   const medio = [["10 Ring Rows","12 Air Squats","200m Run"],["8 Push-ups","15 Air Squats"],["10 Burpees","10 Sit-ups","200m Run"],["12 Air Squats","10 Push-ups"]];
@@ -4822,10 +4800,6 @@ function _crossfitParseSessionForCompletion(session){
     dayRole:session.dayRole, week:session.week, day:session.day,
     strength, wodFormat, wodCapMinutes, wodStructure, wodRoundsPrescribed, wodStations, wodMovements,
   };
-}
-
-function _crossfitPrescriptionTypeLabel(t){
-  return { REPS:'Reps realizadas', TIME:'Tiempo sostenido (s)', DISTANCE:'Distancia (m)', MIXED:'Calorías' }[t] || 'Resultado';
 }
 
 function _crossfitPrescriptionUnit(t){
