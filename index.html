@@ -7952,19 +7952,6 @@ function regenerateCrossfitDay(wi, dayIdx){
   }
 }
 
-/* ================= BIBLIOTECA DE BLOQUES ================= */
-let _blocksCache = [];
-let _lastFocusedField = null;
-let _editingBlockId = null;
-
-const BLOCK_CATEGORY_LABELS = {
-  warmup: 'Warm-up', strength: 'Strength', olympic_weightlifting: 'Olympic Weightlifting',
-  gymnastics: 'Gymnastics', skill: 'Skill', metcon: 'Metcon',
-  accessories: 'Accessories', recovery: 'Recovery'
-};
-
-function _setLastField(el){ _lastFocusedField = el; }
-
 // Pedido de Luis: las tarjetas de día del constructor semanal quedan chicas
 // a propósito (para que quepan varias una al lado de la otra en la franja
 // horizontal) — pero eso corta el texto largo de un WOD real y obliga a leer
@@ -7978,7 +7965,6 @@ function _autoGrowField(el){
 }
 const CROSSFIT_DAY_CARD_FLEX_COLAPSADO = '0 0 150px'; // mismo valor fijo del template en generateProgWeeks()
 function _expandDayCard(cardEl){
-  _setLastField(document.activeElement);
   cardEl.style.flex = '0 0 260px';
   cardEl.style.zIndex = '5';
   cardEl.querySelectorAll('textarea').forEach(_autoGrowField);
@@ -7990,109 +7976,6 @@ function _collapseDayCardMaybe(evt, cardEl){
   cardEl.style.flex = CROSSFIT_DAY_CARD_FLEX_COLAPSADO;
   cardEl.style.zIndex = '';
   cardEl.querySelectorAll('textarea').forEach(t=>{ t.style.height = ''; });
-}
-
-async function loadBlocks(){
-  const { data, error } = await sb.from('blocks').select('*').eq('coach_id', currentUser.id).order('created_at', {ascending:false});
-  if(!error) _blocksCache = data || [];
-  renderBlocksList();
-  populateBlockPicker();
-}
-
-async function saveBlock(){
-  const category = document.getElementById('blockCategory').value;
-  const title = document.getElementById('blockTitle').value.trim();
-  const content = document.getElementById('blockContent').value.trim();
-  if(!title || !content){ toast('Completa el título y el contenido del bloque.', 'info'); return; }
-
-  let error;
-  if(_editingBlockId){
-    ({ error } = await sb.from('blocks').update({ category, title, content }).eq('id', _editingBlockId));
-  } else {
-    ({ error } = await sb.from('blocks').insert({ coach_id: currentUser.id, category, title, content }));
-  }
-  if(error){ toast('Error al guardar el bloque: '+error.message, 'error'); return; }
-
-  _editingBlockId = null;
-  document.getElementById('blockTitle').value = '';
-  document.getElementById('blockContent').value = '';
-  document.getElementById('blockSaveBtn').textContent = 'Guardar bloque';
-  document.getElementById('blockCancelBtn').style.display = 'none';
-  await loadBlocks();
-}
-
-function editBlock(id){
-  const b = _blocksCache.find(x=>x.id===id);
-  if(!b) return;
-  _editingBlockId = id;
-  document.getElementById('blockCategory').value = b.category;
-  document.getElementById('blockTitle').value = b.title;
-  document.getElementById('blockContent').value = b.content;
-  document.getElementById('blockSaveBtn').textContent = 'Guardar cambios';
-  document.getElementById('blockCancelBtn').style.display = 'inline-block';
-  document.getElementById('blockTitle').scrollIntoView({behavior:'smooth', block:'center'});
-}
-
-function cancelEditBlock(){
-  _editingBlockId = null;
-  document.getElementById('blockTitle').value = '';
-  document.getElementById('blockContent').value = '';
-  document.getElementById('blockSaveBtn').textContent = 'Guardar bloque';
-  document.getElementById('blockCancelBtn').style.display = 'none';
-}
-
-async function deleteBlock(id, title){
-  if(!confirmDelete(`¿Borrar el bloque "${title}"? No se puede deshacer.`)) return;
-  await sb.from('blocks').delete().eq('id', id);
-  if(_editingBlockId === id) cancelEditBlock();
-  await loadBlocks();
-}
-
-function renderBlocksList(){
-  const el = document.getElementById('blocksList');
-  if(!_blocksCache.length){ el.innerHTML = emptyStateHtml('Sin bloques guardados todavía.'); return; }
-  const byCategory = {};
-  _blocksCache.forEach(b=>{ (byCategory[b.category] = byCategory[b.category]||[]).push(b); });
-  let html = '';
-  Object.keys(BLOCK_CATEGORY_LABELS).forEach(cat=>{
-    const items = byCategory[cat];
-    if(!items || !items.length) return;
-    html += `<div style="margin-top:10px;"><div style="font-size:11px; color:var(--lime); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">${BLOCK_CATEGORY_LABELS[cat]}</div>`;
-    items.forEach(b=>{
-      html += `<div class="score-item"><span><b>${escapeHtml(b.title)}</b><br><span class="muted" style="font-size:11px;">${escapeHtml(b.content.replace(/\n/g,' · ').slice(0,80))}</span></span>
-        <span style="display:flex; gap:8px; flex-shrink:0;">
-          <button type="button" class="del" style="color:var(--lime);" onclick="editBlock('${b.id}')">Editar</button>
-          <button type="button" class="del" onclick="deleteBlock('${b.id}', ${JSON.stringify(b.title).replace(/"/g,'&quot;')})">Borrar</button>
-        </span></div>`;
-    });
-    html += `</div>`;
-  });
-  el.innerHTML = html;
-}
-
-function populateBlockPicker(){
-  const cat = document.getElementById('insertBlockCategory').value;
-  const picker = document.getElementById('insertBlockPicker');
-  const items = _blocksCache.filter(b=>b.category===cat);
-  picker.innerHTML = items.length
-    ? items.map(b=>`<option value="${b.id}">${escapeHtml(b.title)}</option>`).join('')
-    : '<option value="">Sin bloques en esta categoría</option>';
-}
-
-function insertBlockIntoField(){
-  if(!_lastFocusedField || !document.body.contains(_lastFocusedField)){
-    toast('Primero toca el campo (Fuerza, Skills o WOD) donde quieres insertar el bloque.', 'info');
-    return;
-  }
-  const blockId = document.getElementById('insertBlockPicker').value;
-  const block = _blocksCache.find(b=>b.id===blockId);
-  const msg = document.getElementById('insertBlockMsg');
-  if(!block){ msg.style.color='#ff8c8c'; msg.textContent = 'Elige un bloque válido.'; return; }
-  _lastFocusedField.value = _lastFocusedField.value.trim()
-    ? _lastFocusedField.value.trim() + '\n' + block.content
-    : block.content;
-  msg.style.color = '#8fd694';
-  msg.textContent = `✓ "${block.title}" insertado.`;
 }
 
 function generateProgWeeks(){
