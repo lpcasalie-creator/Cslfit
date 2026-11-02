@@ -8810,9 +8810,10 @@ async function renderAthletesList(){
           <br><span style="font-size:12px; color:${paymentColor};">${paymentInfo}</span>
           <br><span style="font-size:12px; color:${activityColor};">${activityInfo}</span>
         </div>
-        <span style="display:flex; gap:6px; flex-shrink:0;">
+        <span style="display:flex; gap:6px; flex-shrink:0; flex-wrap:wrap;">
           <button class="btn small secondary" onclick="toggleAthleteProgress('${a.id}')">Progreso</button>
           <button class="btn small secondary" onclick="toggleAssignForm('${a.id}')">Asignar</button>
+          <button class="btn small secondary" onclick="goToAthleteMessages('${a.id}')">Mensaje</button>
         </span>
       </div>
       <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
@@ -10458,6 +10459,15 @@ async function renderMessagesConversations(){
 function openMessageThread(athleteId){
   _messagesSelectedAthleteId = athleteId;
   openMessagesView();
+}
+// Fix (auditoría visual/UX): desde "Mis Alumnos" no había forma de escribirle
+// directo a un alumno — había que ir a la pestaña Mensajes y buscarlo en la
+// lista aparte. Acceso directo desde la fila, mismo patrón que Progreso/
+// Asignar. A diferencia de openMessageThread() (que asume que la vista
+// Mensajes ya está activa), acá hay que cambiar de vista primero.
+function goToAthleteMessages(athleteId){
+  _messagesSelectedAthleteId = athleteId;
+  showGroup('messages');
 }
 function closeMessageThread(){
   _messagesSelectedAthleteId = null;
