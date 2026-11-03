@@ -4919,7 +4919,7 @@ function _crossfitCompletionFormHtml(parsed, keyPrefix){
         <label style="font-size:11px;">Notas</label>
         <textarea id="${keyPrefix}_notes" style="min-height:50px; font-size:12px;" placeholder="Cómo te sentiste, ajustes que hiciste..."></textarea>
       </div>
-      <button class="btn" style="margin-top:10px; width:100%;" onclick="saveCrossfitCompletion('${keyPrefix}')">☐ Completar entrenamiento</button>
+      <button class="btn" style="margin-top:10px; width:100%;" onclick="saveCrossfitCompletion('${keyPrefix}', this)">☐ Completar entrenamiento</button>
       <p id="${keyPrefix}_msg" style="font-size:11px; margin-top:6px;"></p>
     </div>`;
 }
@@ -4940,9 +4940,15 @@ function _crossfitToggleFinishedFields(keyPrefix, value){
   if(cf) cf.style.display = value==='no' ? 'block' : 'none';
 }
 
-async function saveCrossfitCompletion(keyPrefix){
+async function saveCrossfitCompletion(keyPrefix, btn){
   const session = window._crossfitCompletionCache && window._crossfitCompletionCache[keyPrefix];
   if(!session){ return; }
+  // Fix (auditoría visual/UX, mismo criterio que saveProgram/saveRM/etc.): sin
+  // esto, un doble-tap en "Completar entrenamiento" duplicaba la fila en
+  // session_completions (y la de scores que se le engancha debajo).
+  if(btn.disabled) return;
+  btn.disabled = true;
+  try{
   const parsed = _crossfitParseSessionForCompletion(session);
   const val = (id)=>{ const el=document.getElementById(id); return el && el.value!=='' ? el.value : null; };
   const numVal = (id)=>{ const v=val(id); return v!=null ? parseFloat(v) : null; };
@@ -5015,6 +5021,9 @@ async function saveCrossfitCompletion(keyPrefix){
 
   if(msgEl){ msgEl.style.color='#8fd694'; msgEl.textContent='✓ Entrenamiento registrado'; }
   if(typeof renderCrossfitHistory === 'function') renderCrossfitHistory();
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function renderCrossfitHistory(){
