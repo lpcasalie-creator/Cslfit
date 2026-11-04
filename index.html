@@ -855,7 +855,7 @@
         <label>Enfoque</label>
         <select id="genFocus" onchange="renderDayOrderPickers()">
           <option value="crossfit" selected>CrossFit</option>
-          <option value="general">General / Completo (todas las cualidades)</option>
+          <option value="general">General / Completo</option>
           <option value="fuerza">Fuerza</option>
           <option value="gimnasia">Gimnasia</option>
           <option value="cardio">Cardio</option>
@@ -901,7 +901,7 @@
           <div><label>Objetivo</label>
             <select id="genGoal">
               <option value="rendimiento" selected>Rendimiento</option>
-              <option value="grasa">Pérdida de grasa</option>
+              <option value="grasa">Bajar grasa</option>
               <option value="competencia">Competencia</option>
             </select>
           </div>
@@ -910,7 +910,7 @@
               <option value="ninguna" selected>Ninguna</option>
               <option value="rodilla">Rodilla</option>
               <option value="hombro">Hombro</option>
-              <option value="espalda">Espalda (lumbar)</option>
+              <option value="espalda">Espalda</option>
             </select>
           </div>
         </div>
@@ -919,7 +919,7 @@
           <option value="primera_vez" selected>Es su primer ciclo / no aplica</option>
           <option value="facil">Le quedó fácil — subir intensidad</option>
           <option value="adecuado">Justo y adecuado — mantener</option>
-          <option value="dificil">Le costó demasiado — bajar intensidad</option>
+          <option value="dificil">Le costó mucho — bajar intensidad</option>
         </select>
         <div id="genContinueFromWrap" style="display:none;">
           <label>Continuar desde programa anterior (opcional, solo CrossFit)</label>
@@ -986,10 +986,15 @@
       <input type="email" id="inviteEmail" placeholder="correo@email.com">
       <div id="invitePlanWrap">
         <label>Tipo de plan</label>
+        <!-- Fix (auditoría visual): el texto completo de la opción se cortaba
+             ("...registra su propio") — un <select> cerrado no hace wrap ni
+             ellipsis, no importa el ancho de la columna. Opción corta +
+             aclaración debajo, mismo criterio que el resto de los selects. -->
         <select id="invitePlan">
-          <option value="tracking">Solo seguimiento (registra su propio progreso)</option>
+          <option value="tracking">Solo seguimiento</option>
           <option value="coached">Con programación mía</option>
         </select>
+        <p style="font-size:11px; color:var(--gray-dim); margin-top:4px;">"Solo seguimiento": el alumno registra su propio progreso, sin que tú le armes el programa.</p>
       </div>
       <button class="btn secondary" style="margin-top:10px;" id="genInviteBtn" onclick="generateInviteCode(this)">Generar código</button>
       <p id="inviteResult" style="font-size:13px; margin-top:10px;"></p>
@@ -1119,18 +1124,21 @@
 
     <div class="card">
       <h3>Nueva carrera</h3>
-      <div class="grid2">
-        <div><label>Fecha</label><input type="date" id="hyroxDate"></div>
-        <div><label>División</label>
-          <select id="hyroxDivision">
-            <option value="open_m">Open Hombres</option>
-            <option value="open_w">Open Mujeres</option>
-            <option value="pro_m">Pro Hombres</option>
-            <option value="pro_w">Pro Mujeres</option>
-            <option value="doubles">Doubles</option>
-            <option value="relay">Relay</option>
-          </select>
-        </div>
+      <div><label>Fecha</label><input type="date" id="hyroxDate"></div>
+      <!-- Fix (auditoría visual): "Open Hombres" se cortaba ("Open Homb") dentro
+           de la mitad de un grid2 — 146px de columna contra ~110px de texto más
+           38px de padding para la flecha, menos de lo que el texto necesitaba.
+           Apilado en vez de forzar 2 columnas: a prueba de ancho/idioma/
+           dispositivo, no solo de esta etiqueta puntual. -->
+      <div><label>División</label>
+        <select id="hyroxDivision">
+          <option value="open_m">Open Hombres</option>
+          <option value="open_w">Open Mujeres</option>
+          <option value="pro_m">Pro Hombres</option>
+          <option value="pro_w">Pro Mujeres</option>
+          <option value="doubles">Doubles</option>
+          <option value="relay">Relay</option>
+        </select>
       </div>
       <label>Nombre de la carrera (opcional)</label>
       <input type="text" id="hyroxRaceName" placeholder="Ej: HYROX Santiago 2026">
@@ -1266,14 +1274,16 @@
         <button class="btn small secondary" onclick="stepFrame(1)">Cuadro ▶</button>
       </div>
 
-      <div class="grid2" style="margin-top:10px;">
-        <div><label>FPS del video</label><input type="number" id="barFps" value="30"></div>
-        <div><label>Modo de marcado</label>
-          <select id="barMode">
-            <option value="calib">Calibrar (2 puntos, distancia conocida)</option>
-            <option value="point">Marcar barra</option>
-          </select>
-        </div>
+      <!-- Fix (auditoría visual, mismo caso que la división de HYROX): "Calibrar
+           (2 puntos, distancia conocida)" necesitaba ~284px y la mitad de un
+           grid2 a 390px de ancho solo da ~105px — se cortaba duro. Apilado en
+           vez de forzar 2 columnas. -->
+      <div style="margin-top:10px;"><label>FPS del video</label><input type="number" id="barFps" value="30"></div>
+      <div><label>Modo de marcado</label>
+        <select id="barMode">
+          <option value="calib">Calibrar (2 puntos, dist. conocida)</option>
+          <option value="point">Marcar barra</option>
+        </select>
       </div>
       <label>Distancia real de calibración (cm) — ej: diámetro del disco = 45cm</label>
       <input type="number" id="barCalibCm" value="45">
