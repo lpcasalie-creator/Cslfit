@@ -10492,20 +10492,34 @@ function closeMessageThread(){
   _messagesSelectedAthleteId = null;
   openMessagesView();
 }
+// Fix (auditoría general, condición de carrera real): un coach puede abrir el
+// hilo de un alumno, volver atrás y abrir el de otro antes de que termine de
+// cargar el primero. Sin esto, la respuesta más lenta (la del primer alumno)
+// podía llegar DESPUÉS y pisar el título/mensajes del segundo con los del
+// primero — el coach quedaba viendo (y potencialmente respondiendo) la
+// conversación equivocada. myReqId se compara contra el contador global
+// después de cada await; si otro llamado a renderMessageThread arrancó
+// mientras tanto, esta ejecución vieja se aborta en vez de pintar datos
+// obsoletos.
+let _msgThreadReqId = 0;
 async function renderMessageThread(athleteId){
+  const myReqId = ++_msgThreadReqId;
   const list = document.getElementById('messagesThreadList');
   list.innerHTML = '<p class="muted" style="text-align:center;"><span class="spinner-inline" aria-hidden="true"></span>Cargando mensajes...</p>';
   const isCoach = currentProfile && currentProfile.role === 'coach';
   const titleEl = document.getElementById('messagesThreadTitle');
   if(isCoach){
     const { data: a } = await sb.from('profiles').select('full_name').eq('id', athleteId).maybeSingle();
+    if(myReqId !== _msgThreadReqId) return;
     titleEl.textContent = a ? a.full_name : 'Mensajes';
   } else {
     titleEl.textContent = (currentProfile && currentProfile.coach_id)
       ? (await sb.from('profiles').select('full_name').eq('id', currentProfile.coach_id).maybeSingle()).data?.full_name || 'Tu coach'
       : 'Tu coach';
+    if(myReqId !== _msgThreadReqId) return;
   }
   const { data: msgs, error } = await sb.from('messages').select('*').eq('athlete_id', athleteId).order('created_at', {ascending:true});
+  if(myReqId !== _msgThreadReqId) return;
   if(error){ list.innerHTML = `<p class="muted">No se pudieron cargar los mensajes: ${error.message}</p>`; return; }
   const rows = msgs || [];
   list.innerHTML = rows.length ? rows.map(m=>{
