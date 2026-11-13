@@ -160,17 +160,20 @@
   }
   nav.tabbar::-webkit-scrollbar{ display:none; }
   nav.tabbar button{
-    flex:0 0 auto; min-width:56px; background:none; border:none; color:var(--gray-dim);
+    /* Fix (reporte real en celular, no solo probado en emulador): con
+       flex:0 0 auto + min-width fijo, el ajuste dependía de que la fuente
+       condensada cargara con la métrica exacta medida en Chromium de
+       escritorio — en un teléfono real (fuente de respaldo más ancha, u
+       otra densidad de píxeles) los 5 botones podían pasarse del ancho real
+       de la pantalla igual. flex:1 1 0 + min-width:0 reparte el ancho
+       disponible en partes IGUALES entre los 5 — siempre suma exactamente
+       100% del nav, sin importar cuánto mida el texto. overflow:hidden +
+       ellipsis como red de seguridad si algún texto no entra en su porción. */
+    flex:1 1 0; min-width:0; max-width:none; background:none; border:none; color:var(--gray-dim);
     font-family:'Barlow Condensed',sans-serif; font-size:12px; font-weight:700;
-    text-transform:uppercase; padding:10px 8px 8px; cursor:pointer; letter-spacing:0.3px;
-    white-space:nowrap;
-    /* Fix (auditoría visual): ícono EN LÍNEA con el texto, no apilado arriba —
-       nav.subnav asume que este bar mide exactamente 44px (ver comentario en
-       min-height de arriba); un layout apilado (ícono arriba, texto abajo)
-       habría subido esa altura y roto ese cálculo (ya documentado como frágil
-       una vez en este mismo archivo). display:inline-flex mantiene la misma
-       caja de línea de siempre. */
-    display:inline-flex; align-items:center; gap:5px;
+    text-transform:uppercase; padding:10px 4px 8px; cursor:pointer; letter-spacing:0.3px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    display:inline-flex; align-items:center; justify-content:center; gap:5px;
   }
   nav.tabbar button.active{color:var(--lime);}
   nav.tabbar button{ position:relative; }
