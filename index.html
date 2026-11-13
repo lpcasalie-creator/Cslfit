@@ -145,6 +145,19 @@
     padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right);
     overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none;
   }
+  /* Fix (venta a clientes nuevos, "qué ve al meterse"): con 8 pestañas y
+     overflow-x:auto sin scrollbar visible, a 390px de ancho solo entran ~5 —
+     el resto (HYROX, Mensajes...) queda fuera de pantalla sin ningún indicio
+     de que se puede deslizar. Overlay fijo aparte (no un pseudo-elemento
+     DENTRO de nav.tabbar, que scrollearía junto con los botones y dejaría de
+     cubrir el borde) que se muestra/oculta según si queda contenido a la
+     derecha — ver _updateTabbarFade(). */
+  .tabbar-fade{
+    position:fixed; right:0; bottom:0; width:30px;
+    height:calc(44px + env(safe-area-inset-bottom));
+    background:linear-gradient(to right, transparent, var(--bg2) 65%);
+    pointer-events:none; z-index:31; display:none;
+  }
   nav.tabbar::-webkit-scrollbar{ display:none; }
   nav.tabbar button{
     flex:0 0 auto; min-width:64px; background:none; border:none; color:var(--gray-dim);
@@ -1321,6 +1334,7 @@
   <button data-group="hyrox" onclick="showGroup('hyrox')"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 21V3"/><path d="M5 4h13l-3 4 3 4H5"/></svg>HYROX</button>
   <button data-group="messages" onclick="showGroup('messages')" id="messagesTabBtn"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Mensajes<span id="messagesUnreadDot" class="unread-dot" style="display:none;"></span></button>
 </nav>
+<div class="tabbar-fade" id="tabbarFade" aria-hidden="true"></div>
 <nav class="subnav" id="subnav-wod" style="display:none;">
   <button onclick="showView('wod')" data-tab="wod">WOD</button>
   <button onclick="showView('timer')" data-tab="timer">Timer</button>
@@ -1378,6 +1392,28 @@ if(window.ResizeObserver){
     if(header) _headerRO.observe(header);
   });
 }
+
+// Fix (venta a clientes nuevos, "qué ve al meterse"): ver comentario junto a
+// .tabbar-fade — ResizeObserver en vez de llamar esto a mano desde cada lugar
+// que oculta/muestra una pestaña (progTabBtn, coachTabBtn, messagesTabBtn...):
+// cualquier cambio de ancho del scroll interno de nav.tabbar (login, cambio de
+// rol, rotar el teléfono) lo recalcula solo, mismo criterio que _headerRO de
+// arriba para el caso de #appRoot arrancando oculto.
+function _updateTabbarFade(){
+  const nav = document.querySelector('nav.tabbar');
+  const fade = document.getElementById('tabbarFade');
+  if(!nav || !fade) return;
+  const hasMoreToRight = nav.scrollWidth - nav.scrollLeft - nav.clientWidth > 1;
+  fade.style.display = hasMoreToRight ? 'block' : 'none';
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const nav = document.querySelector('nav.tabbar');
+  if(!nav) return;
+  nav.addEventListener('scroll', _updateTabbarFade);
+  window.addEventListener('resize', _updateTabbarFade);
+  if(window.ResizeObserver) new ResizeObserver(_updateTabbarFade).observe(nav);
+  _updateTabbarFade();
+});
 
 function escapeHtml(str){
   return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
