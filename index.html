@@ -160,9 +160,9 @@
   }
   nav.tabbar::-webkit-scrollbar{ display:none; }
   nav.tabbar button{
-    flex:0 0 auto; min-width:64px; background:none; border:none; color:var(--gray-dim);
+    flex:0 0 auto; min-width:56px; background:none; border:none; color:var(--gray-dim);
     font-family:'Barlow Condensed',sans-serif; font-size:12px; font-weight:700;
-    text-transform:uppercase; padding:10px 12px 8px; cursor:pointer; letter-spacing:0.3px;
+    text-transform:uppercase; padding:10px 8px 8px; cursor:pointer; letter-spacing:0.3px;
     white-space:nowrap;
     /* Fix (auditoría visual): ícono EN LÍNEA con el texto, no apilado arriba —
        nav.subnav asume que este bar mide exactamente 44px (ver comentario en
@@ -204,6 +204,26 @@
     white-space:nowrap;
   }
   nav.subnav button.active{color:var(--lime);}
+
+  /* Fix (venta a clientes nuevos — "que no se pierdan funciones por no ver
+     que hay scroll"): reemplaza el degradado-hint por el patrón estándar de
+     apps con muchas secciones (Instagram/WhatsApp) — 4 pestañas fijas +
+     "Más" con el resto en una hoja desplegable. Todo queda visible y
+     tocable, nada depende de que alguien note que la barra se desliza. */
+  .more-menu{
+    position:fixed; bottom:calc(44px + env(safe-area-inset-bottom)); left:0; right:0;
+    background:var(--card); box-shadow:0 -2px 8px rgba(0,0,0,0.35);
+    border-top:1px solid var(--border); display:none; flex-direction:column; z-index:32;
+    padding:4px env(safe-area-inset-right) calc(4px + env(safe-area-inset-bottom)) env(safe-area-inset-left);
+  }
+  .more-menu button{
+    display:flex; align-items:center; gap:10px; width:100%; background:none; border:none;
+    color:var(--gray-dim); font-family:'Barlow Condensed',sans-serif; font-size:14px; font-weight:700;
+    text-transform:uppercase; letter-spacing:0.3px; padding:13px 16px; cursor:pointer;
+    border-bottom:1px solid var(--border); text-align:left; position:relative;
+  }
+  .more-menu button:last-child{ border-bottom:none; }
+  .more-menu button.active{ color:var(--lime); }
 
   .timer-display{
     font-family:'Barlow Condensed',sans-serif; font-size:64px; font-weight:800;
@@ -1327,13 +1347,16 @@
 <nav class="tabbar">
   <button class="active" data-group="home" onclick="showGroup('home')" aria-current="page"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 12l9-9 9 9"/><path d="M5 10v11h14V10"/><path d="M9 21v-6h6v6"/></svg>Home</button>
   <button data-group="wod" onclick="showGroup('wod')"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/><rect x="6" y="10.5" width="3" height="3" rx="0.5"/><rect x="15" y="10.5" width="3" height="3" rx="0.5"/><path d="M9 12h6"/></svg>WOD</button>
-  <button data-group="rm" onclick="showGroup('rm')"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>RM</button>
   <button data-group="scores" onclick="showGroup('scores')"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 4h12v3a6 6 0 0 1-12 0V4z"/><path d="M6 5H3a3 3 0 0 0 3 3"/><path d="M18 5h3a3 3 0 0 1-3 3"/><path d="M12 13v4"/><path d="M8 21h8"/><path d="M9 17h6v4H9z"/></svg>Scores</button>
-  <button data-group="prog" onclick="showGroup('prog')" id="progGroupTabBtn"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4"/><path d="M8 3v4"/><path d="M3 10h18"/></svg>Programación</button>
-  <button data-group="mov" onclick="showGroup('mov')"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>Movimientos</button>
-  <button data-group="hyrox" onclick="showGroup('hyrox')"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 21V3"/><path d="M5 4h13l-3 4 3 4H5"/></svg>HYROX</button>
-  <button data-group="messages" onclick="showGroup('messages')" id="messagesTabBtn"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Mensajes<span id="messagesUnreadDot" class="unread-dot" style="display:none;"></span></button>
+  <button data-group="rm" onclick="showGroup('rm')"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>RM</button>
+  <button type="button" id="moreMenuTabBtn" onclick="toggleMoreMenu()" aria-haspopup="true" aria-expanded="false"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Más<span id="moreMenuUnreadDot" class="unread-dot" style="display:none;"></span></button>
 </nav>
+<div class="more-menu" id="moreMenu" role="menu" aria-label="Más secciones">
+  <button data-group="prog" onclick="showGroup('prog')" id="progGroupTabBtn" role="menuitem"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4"/><path d="M8 3v4"/><path d="M3 10h18"/></svg>Programación</button>
+  <button data-group="mov" onclick="showGroup('mov')" role="menuitem"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>Movimientos</button>
+  <button data-group="hyrox" onclick="showGroup('hyrox')" role="menuitem"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 21V3"/><path d="M5 4h13l-3 4 3 4H5"/></svg>HYROX</button>
+  <button data-group="messages" onclick="showGroup('messages')" id="messagesTabBtn" role="menuitem"><svg class="tabicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Mensajes<span id="messagesUnreadDot" class="unread-dot" style="display:none;"></span></button>
+</div>
 <div class="tabbar-fade" id="tabbarFade" aria-hidden="true"></div>
 <nav class="subnav" id="subnav-wod" style="display:none;">
   <button onclick="showView('wod')" data-tab="wod">WOD</button>
@@ -1488,11 +1511,58 @@ const UX01_GRUPO_VISTA_DEFAULT = { wod:'wod', rm:'rm', scores:'scores', prog:'pr
 const UX01_GRUPOS_SIN_SUBMENU = new Set(['home','mov','hyrox','messages']);
 let UX01_ULTIMA_VISTA_POR_GRUPO = {};
 
+// Fix (menú "Más"): Programación/Movimientos/HYROX/Mensajes viven ahora
+// dentro de #moreMenu, no de .tabbar — el selector de abajo busca en los dos
+// lugares, un solo origen de verdad (nada duplicado) en vez de mantener dos
+// copias del mismo botón sincronizadas a mano.
+function _findGroupBtn(grupo){
+  return document.querySelector(`.tabbar button[data-group="${grupo}"], #moreMenu button[data-group="${grupo}"]`);
+}
+// El botón "Más" en sí tiene que iluminarse cuando la sección activa es una
+// de las que vive adentro — si no, alguien en Mensajes vería TODA la barra
+// apagada, como si no hubiera nada seleccionado.
+function _syncMoreMenuTabState(activeBtn){
+  const moreBtn = document.getElementById('moreMenuTabBtn');
+  if(!moreBtn) return;
+  const enMoreMenu = !!(activeBtn && activeBtn.closest('#moreMenu'));
+  moreBtn.classList.toggle('active', enMoreMenu);
+  if(enMoreMenu) moreBtn.setAttribute('aria-current', 'page'); else moreBtn.removeAttribute('aria-current');
+}
+function closeMoreMenu(){
+  const panel = document.getElementById('moreMenu');
+  const btn = document.getElementById('moreMenuTabBtn');
+  if(panel) panel.style.display = 'none';
+  if(btn) btn.setAttribute('aria-expanded', 'false');
+}
+function toggleMoreMenu(){
+  const panel = document.getElementById('moreMenu');
+  const btn = document.getElementById('moreMenuTabBtn');
+  if(!panel || !btn) return;
+  const abriendo = panel.style.display !== 'flex';
+  if(abriendo){
+    document.querySelectorAll('.subnav').forEach(s=>s.style.display='none'); // evita que quede un subnav tapado detrás
+    panel.style.display = 'flex';
+    btn.setAttribute('aria-expanded', 'true');
+  } else {
+    closeMoreMenu();
+  }
+}
+document.addEventListener('click', (e)=>{
+  const panel = document.getElementById('moreMenu');
+  const btn = document.getElementById('moreMenuTabBtn');
+  if(!panel || panel.style.display !== 'flex') return;
+  if(panel.contains(e.target) || (btn && btn.contains(e.target))) return;
+  closeMoreMenu();
+});
+document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeMoreMenu(); });
+
 function showGroup(grupo){
-  document.querySelectorAll('.tabbar button[data-group]').forEach(b=>{ b.classList.remove('active'); b.removeAttribute('aria-current'); });
-  const grupoBtnActivo = document.querySelector(`.tabbar button[data-group="${grupo}"]`);
+  closeMoreMenu();
+  document.querySelectorAll('.tabbar button[data-group], #moreMenu button[data-group]').forEach(b=>{ b.classList.remove('active'); b.removeAttribute('aria-current'); });
+  const grupoBtnActivo = _findGroupBtn(grupo);
   grupoBtnActivo.classList.add('active');
   grupoBtnActivo.setAttribute('aria-current', 'page');
+  _syncMoreMenuTabState(grupoBtnActivo);
   document.querySelectorAll('.subnav').forEach(s=>s.style.display='none');
   const sub = document.getElementById(`subnav-${grupo}`);
   if(sub) sub.style.display='flex';
@@ -1517,9 +1587,10 @@ function showView(id){
   // deja sin ningún botón de grupo activo cuando la vista no pertenece a
   // ninguno, en vez de forzar 'home' por default.
   const grupo = UX01_VIEW_GROUP[id] || (id === 'settings' ? null : 'home');
-  document.querySelectorAll('.tabbar button[data-group]').forEach(b=>{ b.classList.remove('active'); b.removeAttribute('aria-current'); });
-  const grupoBtn = grupo ? document.querySelector(`.tabbar button[data-group="${grupo}"]`) : null;
+  document.querySelectorAll('.tabbar button[data-group], #moreMenu button[data-group]').forEach(b=>{ b.classList.remove('active'); b.removeAttribute('aria-current'); });
+  const grupoBtn = grupo ? _findGroupBtn(grupo) : null;
   if(grupoBtn){ grupoBtn.classList.add('active'); grupoBtn.setAttribute('aria-current', 'page'); }
+  _syncMoreMenuTabState(grupoBtn);
   document.querySelectorAll('.subnav').forEach(s=>s.style.display='none');
   const sub = grupo ? document.getElementById(`subnav-${grupo}`) : null;
   if(sub){ sub.style.display='flex'; UX01_ULTIMA_VISTA_POR_GRUPO[grupo] = id; }
@@ -10619,6 +10690,10 @@ async function refreshUnreadMessagesBadge(){
     count = (data||[]).length;
   }
   dot.style.display = count ? 'block' : 'none';
+  // Fix (menú "Más"): Mensajes vive adentro de #moreMenu — sin esto, un
+  // mensaje nuevo no se notaba en ningún lado hasta abrir el menú a ciegas.
+  const moreDot = document.getElementById('moreMenuUnreadDot');
+  if(moreDot) moreDot.style.display = count ? 'block' : 'none';
 }
 
 /* ---------------- SUPABASE: config + auth ---------------- */
@@ -10811,7 +10886,12 @@ async function onLoggedIn(user){
   // condición, no sólo el atajo redundante del subnav.
   document.getElementById('progTabBtn').style.display = isTrackingOnly ? 'none' : 'block';
   const progGroupBtn = document.getElementById('progGroupTabBtn');
-  if(progGroupBtn) progGroupBtn.style.display = isTrackingOnly ? 'none' : 'block';
+  // Fix (menú "Más"): este botón vive ahora adentro de #moreMenu, que lo
+  // layoutea con display:flex (ícono + texto en fila, con gap) — 'block'
+  // seguía funcionando visualmente por el flujo inline normal de un <svg>
+  // seguido de texto, pero sin el gap:10px, quedaban pegados a diferencia
+  // del resto de los ítems del menú.
+  if(progGroupBtn) progGroupBtn.style.display = isTrackingOnly ? 'none' : 'flex';
   const homeMiProgramaBtn = document.getElementById('homeMiProgramaBtn');
   if(homeMiProgramaBtn) homeMiProgramaBtn.style.display = isTrackingOnly ? 'none' : 'block';
   document.getElementById('homeUserEmail').textContent = user.email;
