@@ -510,6 +510,16 @@
     <button class="btn small secondary" style="margin:0;" onclick="dismissInstallBanner()">Ahora no</button>
   </div>
 </div>
+<!-- Fix (puntos bajos — producto, "sin conexión no se puede ni ver el
+     programa de hoy"): el service worker solo cachea el shell (HTML/íconos),
+     no los datos — sin avisar, cualquier intento de cargar algo quedaba en
+     spinner infinito o pantalla vacía, sin que la persona entendiera por qué.
+     Esto no soluciona el acceso a datos offline (necesitaría cachear y
+     sincronizar cada tabla, un cambio mucho más grande) — al menos deja
+     claro CUÁNDO el problema es la conexión y no la app. -->
+<div id="offlineBanner" style="display:none; align-items:center; gap:10px; background:#1a0f0f; border-bottom:1px solid #4a1f1f; padding:10px 16px;">
+  <span style="font-size:12px; color:#ffb3b3;">⚠️ Sin conexión — lo que veas puede no estar actualizado, y guardar/cargar no va a funcionar hasta que vuelva internet.</span>
+</div>
 
 <main>
 
@@ -575,6 +585,18 @@
       <input type="password" id="newPassword" placeholder="Nueva contraseña">
       <button class="btn secondary" style="margin-top:10px;" onclick="setPassword()">Guardar contraseña</button>
       <p id="passwordMsg" style="font-size:12px; margin-top:8px;"></p>
+    </div>
+    <!-- Fix (puntos bajos — producto): sin esto, un cliente que paga no tenía
+         forma de bajar sus propios datos ni de borrarlos — genera desconfianza
+         justo en el momento en que se le empieza a cobrar. Borrado completo de
+         la CUENTA de acceso (login) queda aparte — eso necesita la service
+         role key en el servidor, no algo que el navegador pueda hacer solo. -->
+    <div class="card">
+      <h3>Tus datos</h3>
+      <p class="muted">Descarga una copia de todo lo que registraste, o bórralo por completo.</p>
+      <button class="btn secondary" style="margin-top:10px;" onclick="downloadMyData(this)">Descargar mis datos</button>
+      <button class="btn secondary" style="margin-top:8px; border-color:var(--danger); color:var(--danger);" onclick="deleteMyData(this)">Borrar todos mis datos</button>
+      <p id="myDataMsg" style="font-size:12px; margin-top:8px;"></p>
     </div>
     <div class="card">
       <h3 id="homeBrandTitle">CSL-Fit</h3>
@@ -1044,6 +1066,20 @@
     </div>
   </section>
 
+  <!-- RANKING (puntos bajos — coaching: comparación entre alumnos del mismo
+       coach, motor de competencia sana que faltaba) -->
+  <section id="ranking" class="view">
+    <div class="card">
+      <h2>Ranking del grupo</h2>
+      <p class="muted">Compara a tus alumnos en un mismo WOD benchmark o levantamiento — elige de la lista de nombres que ya usaron.</p>
+      <label>WOD / Movimiento</label>
+      <select id="rankingMovement" onchange="loadRanking()">
+        <option value="">— Elige uno —</option>
+      </select>
+      <div id="rankingList" style="margin-top:14px;"></div>
+    </div>
+  </section>
+
   <!-- MOVIMIENTOS -->
   <section id="mov" class="view">
     <div class="card">
@@ -1378,6 +1414,7 @@
 <nav class="subnav" id="subnav-prog" style="display:none;">
   <button onclick="showView('prog')" data-tab="prog" id="progTabBtn">Prog</button>
   <button onclick="showView('athletes')" data-tab="athletes" id="coachTabBtn" style="display:none;">Alumnos</button>
+  <button onclick="showView('ranking')" data-tab="ranking" id="rankingTabBtn" style="display:none;">Ranking</button>
 </nav>
 
 <!-- Guía de escalamiento imprimible (pedido de Luis: algo más rápido para los
@@ -1506,7 +1543,7 @@ const UX01_VIEW_GROUP = {
   wod:'wod', timer:'wod',
   rm:'rm', pct:'rm',
   scores:'scores', body:'scores', skills:'scores', analysis:'scores',
-  prog:'prog', athletes:'prog',
+  prog:'prog', athletes:'prog', ranking:'prog',
   hyrox:'hyrox',
   messages:'messages',
 };
@@ -1618,6 +1655,7 @@ function showView(id){
     else { renderActiveProgPreview(); }
   }
   if(id==='athletes'){ renderAthletesList(); renderInviteCodesList(); }
+  if(id==='ranking'){ populateRankingMovements(); }
   if(id==='skills'){ refreshSkillsHistory().then(()=>{ renderSkillsSliders(); populateSkillsDates(); renderSkillsHistory(); }); }
   if(id==='body'){ renderBodyList().then(populateBodyChart); }
   if(id==='rm') renderRMHistory().then(populateRMChartMovements);
@@ -5047,6 +5085,18 @@ function _crossfitCompletionFormHtml(parsed, keyPrefix){
         <label style="font-size:11px; color:var(--gray-dim);">Detalle por movimiento (opcional)</label>
         ${mvRows}
       </div>
+      <!-- Fix (puntos bajos — coaching): el generador prescribe un RPE objetivo
+           pero nunca se cerraba el loop con el RPE REAL logrado — el coach no
+           tenía forma de saber si el estímulo quedó corto, justo o pasado sin
+           preguntarle al alumno aparte. Un solo número simple, no una escala
+           nueva que aprender: mismo 1-10 que ya usa RPE_CAPS en el generador. -->
+      <div style="margin-top:10px;">
+        <label style="font-size:11px;">RPE real de la sesión (1-10, qué tan duro se sintió)</label>
+        <select id="${keyPrefix}_rpe">
+          <option value="">Sin especificar</option>
+          ${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option value="${n}">${n}${n===10?' — al máximo':n<=4?' — muy liviano':n>=8?' — muy duro':''}</option>`).join('')}
+        </select>
+      </div>
       <div style="margin-top:10px;">
         <label style="font-size:11px;">Notas</label>
         <textarea id="${keyPrefix}_notes" style="min-height:50px; font-size:12px;" placeholder="Cómo te sentiste, ajustes que hiciste..."></textarea>
@@ -5129,6 +5179,10 @@ async function saveCrossfitCompletion(keyPrefix, btn){
     result = { wodFormat:'EMOM', capMinutes:parsed.wodCapMinutes, stationsCount:parsed.wodStations,
       minutesCompleted:minutesDone, minutesTotal, completedAllMinutes, strength, movements };
   }
+  // RPE real logrado — aparte del `if` de arriba porque aplica a los 4 formatos
+  // por igual, no es específico de ninguno.
+  const rpe = numVal(`${keyPrefix}_rpe`);
+  if(rpe!=null) result.rpe = rpe;
 
   const { error } = await sb.from('session_completions').insert({
     user_id: currentUser.id,
@@ -5170,8 +5224,9 @@ async function renderCrossfitHistory(){
     const resumen = r.result && r.result.rounds!=null
       ? `${r.result.rounds} rondas${r.result.extraReps?` + ${r.result.extraReps}`:''}`
       : 'Completado';
+    const rpe = r.result && r.result.rpe!=null ? ` · <span style="color:var(--lime);">RPE ${r.result.rpe}</span>` : '';
     return `<div style="padding:8px 0; border-bottom:1px solid var(--border); font-size:12px;">
-      <b>Semana ${r.week} · Día ${r.day+1}</b> — ${resumen}
+      <b>Semana ${r.week} · Día ${r.day+1}</b> — ${resumen}${rpe}
       ${r.notes ? `<div class="muted" style="margin-top:2px;">${r.notes.replace(/</g,'&lt;')}</div>` : ''}
     </div>`;
   }).join('');
@@ -8983,12 +9038,13 @@ async function toggleAthleteProgress(athleteId){
   el.innerHTML = '<p class="muted" style="text-align:center;"><span class="spinner-inline" aria-hidden="true"></span>Cargando progreso...</p>';
   el.style.display = 'block';
 
-  const [rms, bodies, skills, scoresData, hyroxData] = await Promise.all([
+  const [rms, bodies, skills, scoresData, hyroxData, crossfitData] = await Promise.all([
     sb.from('scores').select('*').eq('user_id', athleteId).eq('score_type','load').order('created_at', {ascending:false}).limit(20),
     sb.from('body_entries').select('*').eq('user_id', athleteId).order('entry_date', {ascending:false}).limit(5),
     sb.from('skills_entries').select('*').eq('user_id', athleteId).order('entry_date', {ascending:false}).limit(1),
     sb.from('scores').select('*').eq('user_id', athleteId).order('created_at', {ascending:false}).limit(15),
     sb.from('hyrox_results').select('*').eq('user_id', athleteId).order('race_date', {ascending:false}).limit(5),
+    sb.from('session_completions').select('*').eq('user_id', athleteId).eq('focus','crossfit').order('completed_at', {ascending:false}).limit(6),
   ]);
 
   const sec = (title, content) => `<div style="margin-bottom:12px;">
@@ -9039,7 +9095,84 @@ async function toggleAthleteProgress(athleteId){
       row(`${r.race_date} — <b>${fmt(r.total_seconds)}</b> <span class="muted">(${HYROX_DIVISION_LABELS[r.division]||r.division}${r.race_name?' · '+escapeHtml(r.race_name):''})</span>`)).join(''));
   } else html += sec('HYROX', '<p class="muted" style="font-size:12px;">Sin carreras registradas.</p>');
 
+  // Fix (puntos bajos — coaching): el RPE real que el alumno reporta al
+  // completar una sesión CrossFit (ver saveCrossfitCompletion) no servía de
+  // nada si el coach nunca lo veía — acá es donde de verdad se usa para
+  // decidir si subir/bajar intensidad en el próximo ciclo.
+  const cf = (crossfitData && crossfitData.data) || [];
+  if(cf.length){
+    html += sec('CrossFit (sesiones recientes)', cf.map(c=>{
+      const rpe = c.result && c.result.rpe!=null ? ` · RPE <b style="color:var(--lime);">${c.result.rpe}</b>` : '';
+      return row(`Semana ${c.week} · Día ${c.day+1}${rpe} <span class="muted">(${(c.completed_at||'').slice(0,10)})</span>`);
+    }).join(''));
+  } else html += sec('CrossFit', '<p class="muted" style="font-size:12px;">Sin sesiones registradas.</p>');
+
   el.innerHTML = html;
+}
+
+/* ---------------- RANKING (comparación entre alumnos del mismo coach) ---------------- */
+// Fix (puntos bajos — producto): no había forma de comparar alumnos entre sí,
+// un motor de retención/competencia sana común en apps de CrossFit/HYROX.
+// Reutiliza el acceso que YA tiene el coach a los scores de sus propios
+// alumnos (mismo patrón que toggleAthleteProgress) — no necesita ningún
+// permiso nuevo en Supabase, solo agrupar y ordenar lo que ya se puede leer.
+async function populateRankingMovements(){
+  const sel = document.getElementById('rankingMovement');
+  if(!sel) return;
+  const { data: athletes } = await sb.from('profiles').select('id').eq('role','athlete').eq('coach_id', currentUser.id);
+  const athleteIds = (athletes||[]).map(a=>a.id);
+  const valorPrevio = sel.value;
+  if(!athleteIds.length){
+    sel.innerHTML = '<option value="">— Sin alumnos todavía —</option>';
+    document.getElementById('rankingList').innerHTML = emptyStateHtml('Todavía no tienes alumnos.');
+    return;
+  }
+  const { data: scores } = await sb.from('scores').select('name').in('user_id', athleteIds);
+  const nombres = [...new Set((scores||[]).map(s=>s.name))].sort((a,b)=>a.localeCompare(b,'es'));
+  if(!nombres.length){
+    sel.innerHTML = '<option value="">— Tus alumnos no tienen scores todavía —</option>';
+    document.getElementById('rankingList').innerHTML = '';
+    return;
+  }
+  sel.innerHTML = '<option value="">— Elige uno —</option>' + nombres.map(n=>`<option value="${escapeHtml(n)}" ${n===valorPrevio?'selected':''}>${escapeHtml(n)}</option>`).join('');
+  if(valorPrevio && nombres.includes(valorPrevio)) loadRanking();
+}
+async function loadRanking(){
+  const nombre = document.getElementById('rankingMovement').value;
+  const el = document.getElementById('rankingList');
+  if(!nombre){ el.innerHTML = ''; return; }
+  el.innerHTML = '<p class="muted" style="text-align:center;"><span class="spinner-inline" aria-hidden="true"></span>Cargando ranking...</p>';
+  const { data: athletes } = await sb.from('profiles').select('id, full_name').eq('role','athlete').eq('coach_id', currentUser.id);
+  const athleteIds = (athletes||[]).map(a=>a.id);
+  const nombrePorId = {}; (athletes||[]).forEach(a=>{ nombrePorId[a.id] = a.full_name || 'Alumno'; });
+  const { data: scores, error } = await sb.from('scores').select('*').in('user_id', athleteIds).eq('name', nombre);
+  if(error){ el.innerHTML = `<p class="muted">Error: ${error.message}</p>`; return; }
+  const rows = scores || [];
+  if(!rows.length){ el.innerHTML = emptyStateHtml('Sin registros para este movimiento.'); return; }
+  const scoreType = rows[0].score_type;
+  if(scoreType === 'rounds_reps'){
+    el.innerHTML = '<p class="muted" style="font-size:12px;">Este tipo de resultado (rondas+reps) no se puede rankear de forma justa entre WODs con escalamientos distintos.</p>';
+    return;
+  }
+  // Mejor marca por alumno (mismo criterio de "mejor" que bestValue: tiempo
+  // más bajo gana, carga/reps más alto gana).
+  const mejorPorAlumno = {};
+  rows.forEach(s=>{
+    const v = scoreType==='time' ? timeToSeconds(s.result) : parseFloat(s.result);
+    if(v===null || isNaN(v)) return;
+    const actual = mejorPorAlumno[s.user_id];
+    if(!actual || (scoreType==='time' ? v<actual.v : v>actual.v)) mejorPorAlumno[s.user_id] = { v, result:s.result, date:s.created_at };
+  });
+  const ranked = Object.entries(mejorPorAlumno)
+    .map(([userId, best])=>({ userId, nombre:nombrePorId[userId]||'Alumno', ...best }))
+    .sort((a,b)=> scoreType==='time' ? a.v-b.v : b.v-a.v);
+  if(!ranked.length){ el.innerHTML = emptyStateHtml('Sin registros numéricos válidos para este movimiento.'); return; }
+  const medallas = ['🥇','🥈','🥉'];
+  el.innerHTML = ranked.map((r,i)=>`
+    <div class="score-item">
+      <span>${medallas[i]||`${i+1}.`} <b>${escapeHtml(r.nombre)}</b> <span class="muted">(${(r.date||'').slice(0,10)})</span></span>
+      <b style="color:${i===0?'var(--lime)':'var(--white)'};">${scoreType==='time' ? fmt(r.v) : escapeHtml(r.result)}</b>
+    </div>`).join('');
 }
 
 function toggleAssignForm(athleteId){
@@ -10822,6 +10955,72 @@ async function sendMagicLink(){
 
 function signOut(){ sb.auth.signOut().then(()=>location.reload()); }
 
+/* ---------------- Mis datos: descargar / borrar (puntos bajos — negocio) ---------------- */
+// Mismas tablas personales que ya se leen/escriben en el resto de la app
+// (ver sb.from(...) en cada sección) — un solo lugar que las lista juntas.
+const _MY_DATA_TABLES = ['scores','body_entries','skills_entries','hyrox_results','wl_analysis','session_completions','readiness_checkins','checkins','wod_notes','pct_data'];
+async function downloadMyData(btn){
+  if(btn.disabled) return;
+  btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Preparando...';
+  const msgEl = document.getElementById('myDataMsg');
+  try{
+    const resultados = await Promise.all(_MY_DATA_TABLES.map(t => sb.from(t).select('*').eq('user_id', currentUser.id)));
+    const out = { exportado_el: new Date().toISOString(), usuario: currentUser.email };
+    _MY_DATA_TABLES.forEach((t, i) => { out[t] = resultados[i].data || []; });
+    if(currentProfile && currentProfile.role === 'athlete'){
+      const { data: msgs } = await sb.from('messages').select('*').eq('athlete_id', currentUser.id);
+      out.messages = msgs || [];
+    }
+    const blob = new Blob([JSON.stringify(out, null, 2)], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `csl-training-mis-datos-${localDateStr(new Date())}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    if(msgEl){ msgEl.style.color='#8fd694'; msgEl.textContent = '✓ Descarga iniciada.'; }
+  }catch(e){
+    if(msgEl){ msgEl.style.color='#ff8c8c'; msgEl.textContent = 'No se pudo preparar la descarga: '+e.message; }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+async function deleteMyData(btn){
+  // Acción destructiva e irreversible sobre TODAS las tablas personales a la
+  // vez — un solo confirm() nativo (el mismo criterio que confirmDelete() en
+  // todo el resto de la app) no alcanza acá; se pide escribir una palabra
+  // exacta, igual de simple pero exige una acción deliberada, no un clic de más.
+  const texto = prompt('Esto borra PERMANENTEMENTE todos tus datos de entrenamiento (scores, RM, composición corporal, skills, HYROX, análisis de barra, mensajes). No se puede deshacer.\n\nTu cuenta de acceso (para entrar con tu email) no se borra con esto — para eso contacta a tu coach o a soporte.\n\nEscribe BORRAR (en mayúsculas) para confirmar:');
+  if(texto !== 'BORRAR') return;
+  if(btn.disabled) return;
+  btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Borrando...';
+  const msgEl = document.getElementById('myDataMsg');
+  try{
+    const resultados = await Promise.all(_MY_DATA_TABLES.map(t => sb.from(t).delete().eq('user_id', currentUser.id)));
+    const errores = resultados.map((r,i)=>({ tabla:_MY_DATA_TABLES[i], error:r.error })).filter(x=>x.error);
+    if(currentProfile && currentProfile.role === 'athlete'){
+      const { error } = await sb.from('messages').delete().eq('athlete_id', currentUser.id);
+      if(error) errores.push({ tabla:'messages', error });
+    }
+    if(errores.length){
+      console.error('deleteMyData: fallas parciales', errores);
+      if(msgEl){ msgEl.style.color='#ff8c8c'; msgEl.textContent = `Se borró la mayoría, pero ${errores.length} tabla(s) tuvieron error — revisa la consola.`; }
+      return;
+    }
+    if(msgEl){ msgEl.style.color='#8fd694'; msgEl.textContent = '✓ Tus datos fueron borrados. Cerrando sesión...'; }
+    setTimeout(signOut, 1500);
+  }catch(e){
+    if(msgEl){ msgEl.style.color='#ff8c8c'; msgEl.textContent = 'Error al borrar: '+e.message; }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+
 function applyBranding(bp){
   if(!bp) return;
   const name = bp.brand_name || bp.full_name || 'CSL Training';
@@ -10876,6 +11075,7 @@ async function onLoggedIn(user){
   document.getElementById('authGate').style.display = 'none';
   document.getElementById('appRoot').style.display = 'block';
   document.getElementById('coachTabBtn').style.display = (profile && profile.role === 'coach') ? 'block' : 'none';
+  document.getElementById('rankingTabBtn').style.display = (profile && profile.role === 'coach') ? 'block' : 'none';
   const roleWrap = document.getElementById('inviteRoleWrap');
   if(roleWrap) roleWrap.style.display = (profile && profile.is_super_admin) ? 'block' : 'none';
   const isTrackingOnly = profile && profile.role === 'athlete' && profile.plan !== 'coached';
@@ -10999,6 +11199,14 @@ function dismissInstallBanner(){
 window.addEventListener('appinstalled', ()=>{
   document.getElementById('installBanner').style.display = 'none';
 });
+
+function _updateOfflineBanner(){
+  const el = document.getElementById('offlineBanner');
+  if(el) el.style.display = navigator.onLine ? 'none' : 'flex';
+}
+window.addEventListener('online', _updateOfflineBanner);
+window.addEventListener('offline', _updateOfflineBanner);
+_updateOfflineBanner();
 </script>
 
 <footer class="brandfoot" id="appFooter">@luis_casali · <span>CSL-Fit</span> · CF-L3 · CCFT · USAW L1 · HYROX Official Coach · <span id="appVersionTag"></span></footer>
