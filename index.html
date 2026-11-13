@@ -1835,6 +1835,18 @@ function renderHomeSessionCompact(){
   const card = document.getElementById('homeSessionCard');
   const el = document.getElementById('homeSessionCompact');
   const r = computeTodayProgramEntry();
+  // Fix (venta directa a clientes "solo seguimiento"): esta tarjeta asumía que
+  // TODO atleta sin programa asignado está esperando a que su coach le arme
+  // uno — cierto para un alumno coacheado, pero una promesa falsa para un
+  // plan "solo seguimiento" (nunca le van a asignar nada, es justo lo que
+  // eligió). Mismo criterio que ya oculta "Mi Programa"/"Programación" para
+  // este plan: se oculta la tarjeta entera en vez de mostrar un mensaje que
+  // no le corresponde.
+  const isTrackingOnly = currentProfile && currentProfile.role === 'athlete' && currentProfile.plan !== 'coached';
+  if(!r && isTrackingOnly){
+    card.style.display = 'none';
+    return;
+  }
   // Fix (auditoría visual, pedido del coach: "la primera visión de los
   // alumnos al abrir la app"): esta tarjeta se ocultaba por completo para
   // CUALQUIER caso que no fuera "programa activo con contenido hoy" — un
