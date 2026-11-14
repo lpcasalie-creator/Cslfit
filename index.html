@@ -886,7 +886,7 @@
 
     <!-- Vista COACH: constructor completo -->
     <div id="coachProgSection" style="display:none;">
-      <div class="card">
+      <div class="card prog-coach-only">
         <h2>Probar como alumno <span class="badge">Coach</span></h2>
         <p class="muted">Opcional: asígnate un programa a ti mismo para probar cómo se ve.</p>
         <label>Programa</label>
@@ -895,7 +895,7 @@
         <input type="date" id="activeProgStart" onchange="saveActiveProgram()">
       </div>
 
-      <div class="card">
+      <div class="card prog-coach-only">
         <h3>Importar programa</h3>
         <p class="muted">Si otro coach te compartió un archivo .json, súbelo aquí.</p>
         <input type="file" id="progImportFile" accept="application/json" aria-label="Archivo del programa a importar (.json)">
@@ -908,8 +908,8 @@
       </div>
 
       <div class="card">
-        <h2>Generador automático</h2>
-        <p class="muted">Arma un ciclo completo solo — movimientos rotan cada semana, progresión de carga/volumen real, y semana de test al final. Se carga en el constructor de abajo para que revises o ajustes antes de guardar.</p>
+        <h2 id="progGeneratorTitle">Generador automático</h2>
+        <p class="muted" id="progGeneratorDesc">Arma un ciclo completo solo — movimientos rotan cada semana, progresión de carga/volumen real, y semana de test al final. Se carga en el constructor de abajo para que revises o ajustes antes de guardar.</p>
         <label>Enfoque</label>
         <select id="genFocus" onchange="renderDayOrderPickers()">
           <option value="crossfit" selected>CrossFit</option>
@@ -938,7 +938,7 @@
         </select>
         <div id="equipmentCustomPicker" style="display:none; margin:8px 0 0; padding:10px; background:#141414; border-radius:8px; border:1px solid var(--border);"></div>
         <div class="grid2">
-          <div><label>Nivel del alumno</label>
+          <div><label id="genLevelLabel">Nivel del alumno</label>
             <select id="genLevel">
               <option value="principiante">Principiante</option>
               <option value="intermedio" selected>Intermedio</option>
@@ -972,7 +972,7 @@
             </select>
           </div>
         </div>
-        <label>¿Cómo le fue al alumno en el ciclo anterior?</label>
+        <label id="genPriorFeedbackLabel">¿Cómo le fue al alumno en el ciclo anterior?</label>
         <select id="genPriorFeedback">
           <option value="primera_vez" selected>Es su primer ciclo / no aplica</option>
           <option value="facil">Le quedó fácil — subir intensidad</option>
@@ -1649,9 +1649,25 @@ function showView(id){
   if(id==='wod'){ loadTodayReadiness(); renderActiveProgramCard(); loadWod(); renderCrossfitHistory(); }
   if(id==='prog'){
     const isCoach = currentProfile && currentProfile.role==='coach';
-    document.getElementById('athleteProgCard').style.display = isCoach ? 'none' : 'block';
-    document.getElementById('coachProgSection').style.display = isCoach ? 'block' : 'none';
+    // Fix (puntos bajos — producto): un plan "solo seguimiento" ahora SÍ puede
+    // generarse su propio programa (ver _MY_DATA_TABLES / onLoggedIn arriba) —
+    // reutiliza el mismo constructor del coach (#coachProgSection), pero sin
+    // "Probar como alumno" (no aplica, la persona ES el alumno) ni "Importar
+    // programa" (pensado para compartir entre coaches). saveProgram() detecta
+    // sola este caso y se auto-asigna el programa recién creado.
+    const isTrackingOnly = currentProfile && currentProfile.role==='athlete' && currentProfile.plan!=='coached';
+    document.getElementById('athleteProgCard').style.display = (isCoach || isTrackingOnly) ? 'none' : 'block';
+    document.getElementById('coachProgSection').style.display = (isCoach || isTrackingOnly) ? 'block' : 'none';
+    const soloCoachCards = document.querySelectorAll('.prog-coach-only');
+    soloCoachCards.forEach(el => el.style.display = isCoach ? 'block' : 'none');
+    document.getElementById('progGeneratorTitle').textContent = isCoach ? 'Generador automático' : 'Genera tu programa';
+    document.getElementById('progGeneratorDesc').textContent = isCoach
+      ? 'Arma un ciclo completo solo — movimientos rotan cada semana, progresión de carga/volumen real, y semana de test al final. Se carga en el constructor de abajo para que revises o ajustes antes de guardar.'
+      : 'Arma tu propio ciclo de entrenamiento — movimientos rotan cada semana, progresión de carga/volumen real, y semana de test al final. Al guardar queda activo como tu programa automáticamente.';
+    document.getElementById('genLevelLabel').textContent = isCoach ? 'Nivel del alumno' : 'Tu nivel';
+    document.getElementById('genPriorFeedbackLabel').textContent = isCoach ? '¿Cómo le fue al alumno en el ciclo anterior?' : '¿Cómo te fue en el ciclo anterior?';
     if(isCoach){ populateActiveProgSelect(); renderProgList(); renderDayOrderPickers(); }
+    else if(isTrackingOnly){ renderProgList(); renderDayOrderPickers(); }
     else { renderActiveProgPreview(); }
   }
   if(id==='athletes'){ renderAthletesList(); renderInviteCodesList(); }
@@ -8301,26 +8317,36 @@ async function saveProgram(){
     sessions
   };
 
-  let error;
+  let error, nuevo;
   // La columna `sessions` puede no existir todavía en Supabase. Si falta, se
   // reintenta sin ella para que guardar nunca deje de funcionar. No hay migración
   // automática ni cambio destructivo: sólo un reintento defensivo.
+  // Fix (puntos bajos — producto): la rama de insert ahora pide `.select().single()`
+  // de vuelta — antes no hacía falta (solo el coach guardaba, y el flujo de
+  // activación era aparte, "Probar como alumno"). Un plan "solo seguimiento" que
+  // se autogenera un programa necesita el id del registro recién creado para
+  // auto-asignárselo (ver _selfAssignProgram más abajo) sin un paso extra.
   const escribir = async (body) => _editingProgramId
     ? sb.from('programs').update(body).eq('id', _editingProgramId)
-    : sb.from('programs').insert({ coach_id: currentUser.id, ...body });
+    : sb.from('programs').insert({ coach_id: currentUser.id, ...body }).select().single();
 
-  ({ error } = await escribir(payload));
+  ({ data: nuevo, error } = await escribir(payload));
   if(error && /sessions/i.test(error.message || '') && /column|schema|does not exist/i.test(error.message || '')){
     const { sessions: _omitido, ...sinSessions } = payload;
     console.warn('La columna `sessions` aún no existe en Supabase; se guarda sin estructura. Ejecuta: ALTER TABLE programs ADD COLUMN sessions jsonb;');
-    ({ error } = await escribir(sinSessions));
+    ({ data: nuevo, error } = await escribir(sinSessions));
   }
   if(error){ toast('Error al guardar el programa: '+error.message, 'error'); return; }
 
   const wasEditing = !!_editingProgramId;
   _editingProgramId = null;
+  const isCoach = currentProfile && currentProfile.role === 'coach';
+  if(isCoach){
+    await populateActiveProgSelect();
+  } else if(!wasEditing && nuevo){
+    await _selfAssignProgram(nuevo.id);
+  }
   await renderProgList();
-  await populateActiveProgSelect();
   document.getElementById('progFormTitle').textContent = 'Crear programa';
   document.getElementById('progName').value='';
   document.getElementById('progWeeksBuilder').innerHTML='';
@@ -8331,6 +8357,22 @@ async function saveProgram(){
   } finally {
     saveBtn.disabled = false;
   }
+}
+// Fix (puntos bajos — producto): equivalente de "Probar como alumno" (que es
+// coach-only) para un plan "solo seguimiento" generándose su propio programa
+// — lo activa de inmediato, sin un paso de selección aparte que no aplica
+// (la persona solo tiene UN programa propio a la vez, el que acaba de crear).
+async function _selfAssignProgram(programId){
+  const startDate = localDateStr(new Date());
+  let error;
+  if(cachedAssignment){
+    ({ error } = await sb.from('assignments').update({program_id:programId, start_date:startDate}).eq('id', cachedAssignment.assignment_id));
+  } else {
+    ({ error } = await sb.from('assignments').insert({athlete_id:currentUser.id, program_id:programId, start_date:startDate}));
+  }
+  if(error){ toast('El programa se guardó, pero no se pudo activar automáticamente: '+error.message, 'error'); return; }
+  await refreshAssignment();
+  toast('✓ Programa guardado y activado — empieza hoy.', 'success');
 }
 
 let _progListCache = [];
@@ -11079,24 +11121,18 @@ async function onLoggedIn(user){
   const roleWrap = document.getElementById('inviteRoleWrap');
   if(roleWrap) roleWrap.style.display = (profile && profile.is_super_admin) ? 'block' : 'none';
   const isTrackingOnly = profile && profile.role === 'athlete' && profile.plan !== 'coached';
-  // Analizando la app como usuaria/o: esto sólo ocultaba el acceso corto dentro
-  // del subnav de Programación (progTabBtn) — pero un alumno "solo seguimiento"
-  // seguía viendo el botón PRINCIPAL "Programación" de la tabbar de abajo (sin
-  // id, nunca se tocaba acá) Y el atajo "Mi Programa" de Accesos rápidos en
-  // Home (sin ninguna condición, siempre visible) — ambos lo llevaban a la
-  // misma vista "prog" con "Sin programa activo asignado", una función que no
-  // le corresponde a su plan. Se ocultan los 3 puntos de entrada con la MISMA
-  // condición, no sólo el atajo redundante del subnav.
-  document.getElementById('progTabBtn').style.display = isTrackingOnly ? 'none' : 'block';
+  // Fix (puntos bajos — producto): un plan "solo seguimiento" antes no tenía
+  // NINGUNA forma de conseguir un programa estructurado — el Generador
+  // Automático siempre fue exclusivo del coach, ni oculto estaba disponible
+  // para que el alumno lo use sobre sí mismo. Se le abre acceso a "Programación"
+  // de nuevo (ver showView('prog') más abajo, que ahora distingue 3 casos en
+  // vez de 2: coach / solo-seguimiento con generador propio / coacheado de
+  // solo lectura) — YA NO se ocultan estos 3 puntos de entrada para este plan.
+  document.getElementById('progTabBtn').style.display = 'block';
   const progGroupBtn = document.getElementById('progGroupTabBtn');
-  // Fix (menú "Más"): este botón vive ahora adentro de #moreMenu, que lo
-  // layoutea con display:flex (ícono + texto en fila, con gap) — 'block'
-  // seguía funcionando visualmente por el flujo inline normal de un <svg>
-  // seguido de texto, pero sin el gap:10px, quedaban pegados a diferencia
-  // del resto de los ítems del menú.
-  if(progGroupBtn) progGroupBtn.style.display = isTrackingOnly ? 'none' : 'flex';
+  if(progGroupBtn) progGroupBtn.style.display = 'flex';
   const homeMiProgramaBtn = document.getElementById('homeMiProgramaBtn');
-  if(homeMiProgramaBtn) homeMiProgramaBtn.style.display = isTrackingOnly ? 'none' : 'block';
+  if(homeMiProgramaBtn) homeMiProgramaBtn.style.display = 'block';
   document.getElementById('homeUserEmail').textContent = user.email;
   const wus = document.getElementById('weightUnitSelect'); if(wus) wus.value = currentWeightUnit;
   const wl = document.getElementById('rmWeightLabel'); if(wl) wl.textContent = `Peso (${currentWeightUnit})`;
