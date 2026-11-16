@@ -728,6 +728,26 @@
         <option value="kg">Kilos (kg)</option>
         <option value="lb">Libras (lb)</option>
       </select>
+      <!-- Fix (pedido: "que te diga cómo cargar la barra con el peso que
+           selecciones") — la barra en sí varía (olímpica 20kg, de mujer/
+           entrenamiento 15kg o 10kg), así que es una preferencia aparte de la
+           unidad kg/lb, no algo fijo. -->
+      <label>Peso de la barra (vacía)</label>
+      <select id="barWeightSelect" onchange="onBarWeightSelectChange()">
+        <option value="20">Hombres (20kg)</option>
+        <option value="15">Mujeres (15kg)</option>
+        <option value="10">Entrenamiento (10kg)</option>
+        <option value="custom">Personalizada</option>
+      </select>
+      <!-- Fix (encontrado probando, con atasco real reproducido): al ocultar
+           este input (display:none) mientras tenía foco de un uso anterior
+           como "Personalizada", el navegador le dispara su propio "change"
+           con el valor VIEJO que quedó adentro — eso pisaba el reset de
+           _barWeight justo después de cambiar kg/lb. El guard de abajo
+           ignora ese change si el select ya no está en "custom" (ya no es
+           relevante), en vez de pelear contra el blur-on-hide del browser. -->
+      <input type="number" id="barWeightInput" value="20" step="0.5" min="0" style="display:none; margin-top:8px;"
+        onchange="if(document.getElementById('barWeightSelect').value==='custom') setBarWeight(this.value)">
       <label>Movimiento</label>
       <input type="text" id="rmMovement" placeholder="Ej: Back Squat">
       <div class="grid2">
@@ -742,7 +762,16 @@
       </div>
       <button class="btn" onclick="calcRM()">Calcular</button>
       <h3 id="rmResult" style="margin-top:14px; color:var(--lime); font-size:24px;"></h3>
+      <p class="muted" id="rmResultCarga" style="font-size:12px;"></p>
       <button class="btn secondary" id="rmSaveBtn" style="display:none;" onclick="saveRM(this)">Guardar en historial</button>
+    </div>
+
+    <div class="card">
+      <h3>Calculadora de discos</h3>
+      <p class="muted">Escribe cualquier peso y te decimos qué discos poner de cada lado.</p>
+      <label id="discCalcLabel">Peso a cargar (kg)</label>
+      <input type="number" id="discCalcWeight" step="0.5" min="0" oninput="renderDiscCalc()">
+      <p style="margin-top:10px; font-size:13px;" id="discCalcResult"></p>
     </div>
 
     <div class="card">
@@ -2488,15 +2517,177 @@ function kgToWeightInputVal(kg){
 function weightNum(kg){ // Fase 18 (Fix 15): número redondo para display sin sufijo de unidad (grillas de rep-max/%)
   return currentWeightUnit === 'lb' ? roundLb5(kgToLb(kg)) : Math.round(kg);
 }
+
+/* ---------------- Calculadora de discos (cómo cargar la barra) ---------------- */
+// Pedido de Luis: que la app diga cómo cargar la barra para un peso dado, no
+// solo el número. Conjuntos de discos estándar de gimnasio — kg y lb son sets
+// DISTINTOS de verdad (no una conversión del otro: un gimnasio con discos en
+// lb no tiene un disco de "11.34kg"), así que cada unidad usa su propio set.
+const BARBELL_PLATES_KG = [25, 20, 15, 10, 5, 2.5, 1.25];
+const BARBELL_PLATES_LB = [45, 35, 25, 10, 5, 2.5];
+const BARBELL_DEFAULT_KG = 20;
+const BARBELL_DEFAULT_LB = 45;
+// Peso de barra elegido por la persona (vacía olímpica estándar por defecto,
+// pero hay barras de mujer/entrenamiento de 15kg o 10kg) — una sola variable
+// global porque es una propiedad del gimnasio/barra, no de cada cálculo.
+let _barWeight = BARBELL_DEFAULT_KG;
+function _barWeightDefaultForUnit(){ return currentWeightUnit==='lb' ? BARBELL_DEFAULT_LB : BARBELL_DEFAULT_KG; }
+// Devuelve cuántos discos de cada tamaño van POR LADO para acercarse lo más
+// posible a kgTarget, en la unidad que esté eligiendo la persona ahora mismo
+// (igual criterio que fmtWeight: la unidad es de PRESENTACIÓN, kg sigue
+// siendo lo único que se guarda). Greedy: con el set de arriba, SIEMPRE da
+// exacto si el resto por lado es múltiplo del disco más chico (1.25kg / 2.5lb)
+// — si no, deja el remanente más chico posible y lo marca como aproximado.
+function calcBarLoading(kgTarget){
+  const bar = _barWeight;
+  const plates = currentWeightUnit==='lb' ? BARBELL_PLATES_LB : BARBELL_PLATES_KG;
+  const total = currentWeightUnit==='lb' ? kgToLb(kgTarget) : kgTarget;
+  if(total <= bar + 1e-6) return { bar, perSide:[], achieved:bar, target:total, exact: Math.abs(total-bar)<0.01 };
+  let remaining = (total - bar) / 2;
+  const perSide = [];
+  for(const p of plates){
+    let count = 0;
+    while(remaining >= p - 1e-6){ remaining -= p; count++; }
+    if(count>0) perSide.push({ plate:p, count });
+  }
+  const perSideTotal = perSide.reduce((s,x)=>s+x.plate*x.count, 0);
+  const achieved = bar + perSideTotal*2;
+  return { bar, perSide, achieved, target: total, exact: Math.abs(achieved-total) < 0.01 };
+}
+function fmtBarLoadingShort(kgTarget){
+  const r = calcBarLoading(kgTarget);
+  if(!r.perSide.length) return 'solo barra';
+  const txt = r.perSide.map(x=>`${x.count}×${_fmtPlateNum(x.plate)}`).join('+');
+  return r.exact ? txt : `${txt} (≈)`;
+}
+// Fix (pedido: "se podría ver con los colores de los discos") — estándar
+// cruzado entre marcas (Rogue/Torque/Titan/etc.), no inventado: en kg sigue
+// el código IWF (25 rojo, 20 azul, 15 amarillo, 10 verde); en lb replica el
+// mismo patrón de colores pero mapeado a los tamaños que de verdad se venden
+// en libras (45 azul, 35 amarillo, 25 verde) — NO es una conversión kg→lb
+// del mismo disco, son sets de discos distintos con su propia convención.
+const PLATE_COLORS_KG = { 25:'#e5383b', 20:'#1d4ed8', 15:'#eab308', 10:'#22c55e', 5:'#f4f4f2', 2.5:'#18181b', 1.25:'#9ca3af' };
+const PLATE_COLORS_LB = { 45:'#1d4ed8', 35:'#eab308', 25:'#22c55e', 10:'#9ca3af', 5:'#f4f4f2', 2.5:'#18181b' };
+function _plateColor(plate){
+  const map = currentWeightUnit==='lb' ? PLATE_COLORS_LB : PLATE_COLORS_KG;
+  return map[plate] || '#666';
+}
+// Discos claros (blanco) necesitan texto oscuro para leerse encima; el resto,
+// texto blanco — mismo criterio que cualquier chip de color con texto adentro.
+function _plateTextColor(bg){ return bg === '#f4f4f2' ? '#0d0d0d' : '#ffffff'; }
+function _plateChip(plate){
+  const bg = _plateColor(plate);
+  return `<span style="display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; border-radius:50%; background:${bg}; color:${_plateTextColor(bg)}; font-size:6.5px; font-weight:800; border:1px solid rgba(255,255,255,0.2); flex-shrink:0; line-height:1;">${_fmtPlateNum(plate)}</span>`;
+}
+// Fila de chips de color envuelta en flex-wrap — en espacios angostos (tiles
+// de 25%, celdas de la tabla %BS) pasa a 2 líneas en vez de desbordar, mismo
+// criterio que ya usa el resto de la app para texto largo en columnas chicas.
+function fmtBarLoadingChips(kgTarget, align){
+  const r = calcBarLoading(kgTarget);
+  if(!r.perSide.length) return '<span class="muted" style="font-size:9px;">solo barra</span>';
+  const grupos = r.perSide.map(x=>
+    `<span style="display:inline-flex; align-items:center; gap:2px;">${_plateChip(x.plate)}<span style="font-size:8px; color:var(--gray-dim);">×${x.count}</span></span>`
+  ).join('');
+  const nota = r.exact ? '' : '<span style="font-size:8px; color:var(--gray-dim);">(≈)</span>';
+  return `<span style="display:inline-flex; flex-wrap:wrap; gap:4px; align-items:center; justify-content:${align||'center'};">${grupos}${nota}</span>`;
+}
+function fmtBarLoadingFull(kgTarget){
+  const r = calcBarLoading(kgTarget);
+  const u = currentWeightUnit==='lb' ? 'lb' : 'kg';
+  const barTxt = `Barra ${_fmtPlateNum(r.bar)}${u}`;
+  if(!r.perSide.length) return `${barTxt} — no hace falta disco, el peso pedido es igual o menos que la barra sola.`;
+  const discos = r.perSide.map(x=>`${x.count}× ${_fmtPlateNum(x.plate)}${u}`).join(' + ');
+  const nota = r.exact ? '' : ` — el disco más chico que tienes es ${_fmtPlateNum(_platesSmallest())}${u}, así que el total real queda en ${_fmtPlateNum(r.achieved)}${u}, no exacto.`;
+  return `${barTxt} + ${discos} por lado = ${_fmtPlateNum(r.achieved)}${u} total.${nota}`;
+}
+// Misma frase que fmtBarLoadingFull, pero con los discos como chips de color
+// en vez de texto — para los lugares que pintan con innerHTML (resultado del
+// 1RM, calculadora de discos). Separada en vez de agregar un flag a la de
+// arriba porque esa sigue usándose donde SÍ hace falta texto plano.
+function fmtBarLoadingFullChips(kgTarget){
+  const r = calcBarLoading(kgTarget);
+  const u = currentWeightUnit==='lb' ? 'lb' : 'kg';
+  const barTxt = `Barra ${_fmtPlateNum(r.bar)}${u}`;
+  if(!r.perSide.length) return `${barTxt} — no hace falta disco, el peso pedido es igual o menos que la barra sola.`;
+  const chips = fmtBarLoadingChips(kgTarget, 'flex-start');
+  const nota = r.exact ? '' : ` — el disco más chico que tienes es ${_fmtPlateNum(_platesSmallest())}${u}, así que el total real queda en ${_fmtPlateNum(r.achieved)}${u}, no exacto.`;
+  return `${barTxt} + ${chips} por lado = ${_fmtPlateNum(r.achieved)}${u} total.${nota}`;
+}
+function _platesSmallest(){ return (currentWeightUnit==='lb' ? BARBELL_PLATES_LB : BARBELL_PLATES_KG).slice(-1)[0]; }
+function _fmtPlateNum(n){ return Number.isInteger(n) ? n : n.toFixed(2).replace(/0+$/,'').replace(/\.$/,''); }
+function setBarWeight(val){
+  const n = parseFloat(val);
+  _barWeight = (n && n>0) ? n : _barWeightDefaultForUnit();
+  // Fix (encontrado probando): esto actualizaba la tabla de % y la
+  // calculadora de discos, pero no la línea "Carga" del resultado de arriba
+  // (rmResultCarga) — quedaba mostrando la carga con la barra VIEJA aunque
+  // el resto de la pantalla ya hablara de la nueva.
+  if(typeof lastRM !== 'undefined' && lastRM){
+    renderPctFromRM(lastRM);
+    const rc = document.getElementById('rmResultCarga');
+    if(rc) rc.innerHTML = fmtBarLoadingFullChips(lastRM);
+  }
+  renderPctTable();
+  renderDiscCalc();
+  // "Mis máximos" (los tiles de arriba) también muestran carga de discos —
+  // sin esto, cambiar la barra ahí no se reflejaba hasta volver a tocar el
+  // movimiento.
+  if(typeof renderPrDetail === 'function') renderPrDetail();
+}
+// Fix (pedido: "la opción de elegir barra de hombre o de mujer") — select con
+// las barras más comunes en vez de un número suelto que nadie adivina que se
+// puede cambiar. Las opciones (20/15/10kg o 45/35lb) se arman según la
+// unidad activa — poner "20kg" como opción mientras se trabaja en libras no
+// tendría sentido.
+function _renderBarWeightOptions(){
+  const sel = document.getElementById('barWeightSelect');
+  if(!sel) return;
+  const opts = currentWeightUnit==='lb'
+    ? [[45,'Hombres (45lb)'],[35,'Mujeres (35lb)']]
+    : [[20,'Hombres (20kg)'],[15,'Mujeres (15kg)'],[10,'Entrenamiento (10kg)']];
+  sel.innerHTML = opts.map(([v,l])=>`<option value="${v}">${l}</option>`).join('') + '<option value="custom">Personalizada</option>';
+  const match = opts.find(([v])=>Math.abs(v-_barWeight)<0.01);
+  sel.value = match ? String(match[0]) : 'custom';
+  const input = document.getElementById('barWeightInput');
+  if(input){ input.style.display = match ? 'none' : 'block'; if(!match) input.value = _barWeight; }
+}
+function onBarWeightSelectChange(){
+  const sel = document.getElementById('barWeightSelect');
+  const input = document.getElementById('barWeightInput');
+  if(sel.value === 'custom'){
+    input.style.display = 'block';
+    input.value = _barWeight;
+    input.focus();
+  } else {
+    input.style.display = 'none';
+    setBarWeight(sel.value);
+  }
+}
+function renderDiscCalc(){
+  const input = document.getElementById('discCalcWeight');
+  const out = document.getElementById('discCalcResult');
+  if(!input || !out) return;
+  const w = parseFloat(input.value);
+  if(!w || w<=0){ out.textContent = ''; return; }
+  out.innerHTML = fmtBarLoadingFullChips(weightInputToKg(w));
+}
 async function setWeightUnit(unit){
   currentWeightUnit = unit;
   if(currentUser){
     await sb.from('profiles').update({ weight_unit: unit }).eq('id', currentUser.id);
   }
+  // Fix (calculadora de discos): un peso de barra en kg no tiene sentido al
+  // pasar a lb (y viceversa) — se resetea al estándar de la unidad nueva en
+  // vez de arrastrar un número que ya no corresponde a ningún disco real.
+  _barWeight = _barWeightDefaultForUnit();
+  _renderBarWeightOptions();
   renderPctTable();
   renderHyroxStandardsTable();
+  renderDiscCalc();
+  if(typeof lastRM !== 'undefined' && lastRM) renderPctFromRM(lastRM);
   if(_rmHistCache) renderRMHistory();
   const wl = document.getElementById('rmWeightLabel'); if(wl) wl.textContent = `Peso (${unit})`;
+  const dcl = document.getElementById('discCalcLabel'); if(dcl) dcl.textContent = `Peso a cargar (${unit})`;
   const ph = document.getElementById('pctPrHeader'); if(ph) ph.innerHTML = `Tu PR<br>(${unit})`;
   const fh = document.getElementById('pctFaltanHeader'); if(fh) fh.innerHTML = `${unit==='lb'?'Lb':'Kg'}<br>faltan`;
 }
@@ -2590,12 +2781,19 @@ function renderPrDetail(){
       font-family:'Barlow Condensed',sans-serif; text-transform:uppercase;">${r} rep</button>`).join('');
 
   // Grilla de porcentajes 105% → 30%
+  // Fix (pedido: "que te diga cómo cargar la barra con el peso que
+  // selecciones") — línea chica debajo del %, mismo criterio visual que ya
+  // usa esta grilla (nada de tablas, que es justo lo que no queríamos acá).
   const pcts = [105,100,95,90,85,80,75,70,65,60,55,50,45,40,35,30];
-  const grid = pcts.map(p=>`
+  const grid = pcts.map(p=>{
+    const pesoKg = base*p/100;
+    return `
     <div style="width:25%; padding:10px 2px; text-align:center; box-sizing:border-box;">
-      <div style="font-size:18px; font-weight:800; color:${p===100?'var(--lime)':'var(--text)'};">${weightNum(base*p/100)}</div>
+      <div style="font-size:18px; font-weight:800; color:${p===100?'var(--lime)':'var(--text)'};">${weightNum(pesoKg)}</div>
       <div style="font-size:11px; color:${p===100?'var(--lime)':'var(--gray-dim)'};">${p}%</div>
-    </div>`).join('');
+      <div style="margin-top:3px;">${fmtBarLoadingChips(pesoKg)}</div>
+    </div>`;
+  }).join('');
 
   // Historial del movimiento
   const hist = (_rmHistCache||[]).filter(h=>h.movement===_prCurrent)
@@ -2651,6 +2849,7 @@ function calcRM(){
   const rm = epley(w,r);
   lastRM = rm; // canónico, siempre kg
   document.getElementById('rmResult').textContent = fmtWeight(rm)+' — 1RM estimado';
+  document.getElementById('rmResultCarga').innerHTML = fmtBarLoadingFullChips(rm);
   document.getElementById('rmSaveBtn').style.display='block';
   renderPctFromRM(rm);
 }
@@ -2661,9 +2860,12 @@ function renderPctFromRM(rm){
     [70,'Técnica cargada'], [65,'Técnica'], [60,'Técnica / calentamiento'],
     [50,'Activación']
   ];
-  const rows = zones.map(([p,label])=>`<tr><td>${p}%</td><td>${fmtWeight(rm*p/100)}</td><td class="name">${label}</td></tr>`).join('');
+  const rows = zones.map(([p,label])=>{
+    const peso = rm*p/100;
+    return `<tr><td>${p}%</td><td>${fmtWeight(peso)}</td><td class="name">${label}</td><td>${fmtBarLoadingChips(peso, 'flex-start')}</td></tr>`;
+  }).join('');
   document.getElementById('rmPctTable').innerHTML =
-    `<tr><th>%</th><th>${currentWeightUnit==='lb'?'Lb':'Kg'}</th><th style="text-align:left;">Uso</th></tr>${rows}`;
+    `<tr><th>%</th><th>${currentWeightUnit==='lb'?'Lb':'Kg'}</th><th style="text-align:left;">Uso</th><th>Carga</th></tr>${rows}`;
 }
 // Fix (Luis: "hay un conflicto entre los RM y los scores" — dos tablas
 // separadas para lo mismo, "Back Squat" tenía un historial en cada una que
@@ -2823,6 +3025,12 @@ function renderPctTable(){
       idealVal = bsEstimated * m.pct;
       idealCell = fmtWeight(idealVal);
     }
+    // Fix (pedido: "que te diga cómo cargar la barra con el peso que
+    // selecciones") — versión compacta (no la frase completa de
+    // fmtBarLoadingFull, que no entraría en esta columna angosta), mismo
+    // criterio de wrap natural que ya usa esta tabla en el nombre del
+    // movimiento ("Back Squat (desde tus RM)" ya se parte en 2-3 líneas).
+    const cargaLine = idealVal ? `<br>${fmtBarLoadingChips(idealVal, 'flex-start')}` : '';
 
     if(idealVal && ownEstimated){
       const ratio = ownEstimated/idealVal;
@@ -2840,7 +3048,7 @@ function renderPctTable(){
           onchange="setPctValue('${m.name}','pr',this.value)"></td>
       <td><input type="number" value="${entry.auto?'':entry.reps}" style="width:42px;padding:4px;font-size:12px;"
           onchange="setPctValue('${m.name}','reps',this.value)"></td>
-      <td>${idealCell}</td>
+      <td>${idealCell}${cargaLine}</td>
       <td>${pctCell}</td>
       <td class="${optClass}">${optCell}</td>
       <td>${kgCell}</td>
@@ -11112,6 +11320,12 @@ async function onLoggedIn(user){
   let { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
   currentProfile = profile;
   currentWeightUnit = (profile && profile.weight_unit) || 'kg'; // Fase 18 (Fix 15)
+  // Fix (calculadora de discos): esto NO pasa por setWeightUnit() (ese solo
+  // corre al cambiar el selector a mano) — sin esto, alguien con preferencia
+  // "lb" guardada entraba con _barWeight todavía en su default de kg (20),
+  // tratado como si fueran 20 LIBRAS — una barra absurdamente liviana.
+  _barWeight = _barWeightDefaultForUnit();
+  _renderBarWeightOptions();
   renderHomeGreeting();
 
   document.getElementById('authGate').style.display = 'none';
