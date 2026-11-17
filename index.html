@@ -2875,7 +2875,8 @@ function renderPctFromRM(rm){
   ];
   const rows = zones.map(([p,label])=>{
     const peso = rm*p/100;
-    return `<tr><td>${p}%</td><td>${fmtWeight(peso)}</td><td class="name">${label}</td><td>${fmtBarLoadingChips(peso, 'flex-start')}</td></tr>`;
+    const pctCell = `<span style="display:inline-block; padding:1px 7px; border-radius:8px; background:${p===100?'var(--lime)':'var(--bg2)'}; border:1px solid ${p===100?'var(--lime)':'var(--border)'};"><span style="font-size:12px; font-weight:800; color:${p===100?'#0d0d0d':'var(--white)'};">${p}%</span></span>`;
+    return `<tr><td>${pctCell}</td><td>${fmtWeight(peso)}</td><td class="name">${label}</td><td>${fmtBarLoadingChips(peso, 'flex-start')}</td></tr>`;
   }).join('');
   document.getElementById('rmPctTable').innerHTML =
     `<tr><th>%</th><th>${currentWeightUnit==='lb'?'Lb':'Kg'}</th><th style="text-align:left;">Uso</th><th>Carga</th></tr>${rows}`;
