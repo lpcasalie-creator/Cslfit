@@ -8198,8 +8198,16 @@ function autoGenerateProgram(){
   const _crossfit22Semana1Wod = {};
 
   for(let wi=0; wi<weeksCount; wi++){
-    const isTest = (wi === weeksCount-1);
-    const isPreTestDeload = weeksCount >= 3 && wi === weeksCount-2 && !isTest;
+    // Fix (pedido de Luis: "no me gusta que se repitan los wods de la semana 1
+    // en la semana 4") — la semana de test comparaba contra la semana 1 sin
+    // importar cuánto ciclo hubiera de por medio; en un ciclo corto (4 semanas)
+    // eso es casi literalmente repetir el WOD de la semana pasada, no medir
+    // progreso real. Se restringe a ciclos largos (mismo umbral que ya usa
+    // isMidCycleDeload para "ciclo largo" más abajo) — en un ciclo corto la
+    // última semana genera contenido nuevo como cualquier otra.
+    const hasTestWeek = weeksCount >= 8;
+    const isTest = hasTestWeek && (wi === weeksCount-1);
+    const isPreTestDeload = hasTestWeek && wi === weeksCount-2 && !isTest;
     // Descarga periódica 3:1 (cada 4ta semana), solo en ciclos largos y sin chocar con la descarga pre-test
     // Fase 26 (hallazgo real): "wi <= weeksCount-4" dejaba pasar una descarga de
     // ciclo a sólo 2 semanas de la descarga pre-test para weeksCount ≡ 3 (mod 4)
@@ -8368,8 +8376,14 @@ function regenerateCrossfitDay(wi, dayIdx){
   const ti = dayIndices.indexOf(dayIdx);
   if(ti === -1) return; // ese día es descanso en esta configuración, no hay nada que regenerar
 
-  const isTest = (wi === weeksCount-1);
-  const isPreTestDeload = weeksCount >= 3 && wi === weeksCount-2 && !isTest;
+  // Fix (ciclos cortos sin semana de test — ver mismo comentario en
+  // autoGenerateProgram()): regenerar un día individual debe calcular isTest
+  // con el mismo criterio que la generación original, o un día de la última
+  // semana de un ciclo corto se regeneraría como "test" aunque el resto de
+  // esa semana ya se generó como una semana normal.
+  const hasTestWeek = weeksCount >= 8;
+  const isTest = hasTestWeek && (wi === weeksCount-1);
+  const isPreTestDeload = hasTestWeek && wi === weeksCount-2 && !isTest;
   // Fase 26: mismo fix que autoGenerateProgram() — ver ese comentario. Exige al
   // menos 3 semanas libres antes de la descarga pre-test.
   const isMidCycleDeload = weeksCount >= 8 && !isTest && !isPreTestDeload && (wi+1) % 4 === 0 && wi <= weeksCount-4 && (weeksCount-2) - wi >= 3;
