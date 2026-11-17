@@ -6294,9 +6294,24 @@ function _crossfitPickMovement(pattern, wi, ti, opts){
     const poolSinFamiliaRepetida = pool.filter(name => _crossfitFamiliaEquipo(name) !== opts._prevFamiliaEquipo);
     if(poolSinFamiliaRepetida.length) pool = poolSinFamiliaRepetida;
   }
+  // Fix (auditoría de variabilidad, caso real encontrado: "Bulgarian Split
+  // Squat" repetido en el borde entre semana 5 y 6, pool completo de 10,
+  // 2 candidatos libres disponibles — no debería haber repetido). Causa: el
+  // comentario de abajo decía "no altera el mecanismo de reintento", pero sí
+  // lo altera — duplica cada nombre x4/x6/x8 ANTES de la comparación de la
+  // red de respaldo (línea ~6332: poolAntesDeFamilia.length > pool.length),
+  // así que un pool reducido por familia a 2 candidatos (ambos ya usados)
+  // queda con length=8-12 tras la ponderación — MAYOR que poolAntesDeFamilia
+  // (6), no menor — la condición nunca se cumple y la red de respaldo que
+  // debía reintentar sobre el pool completo jamás se activa, aunque existan
+  // alternativas libres ahí. Se guarda el length ANTES de ponderar — la
+  // comparación de abajo necesita diversidad real de candidatos, no el
+  // tamaño del arreglo inflado por la ponderación.
+  const poolTrasFamiliaSinPeso = pool;
   // Fase 15B: ponderación por nivel — sólo intermedio/avanzado, Beginner sin cambio
-  // (ya quedó excluido de ADVANCED arriba). No altera _used ni el mecanismo de
-  // reintento: sólo hace el arreglo de candidatos más largo antes de indexar.
+  // (ya quedó excluido de ADVANCED arriba). Sí hace el arreglo de candidatos más
+  // largo antes de indexar (ver fix de arriba) — por eso la comparación de la red
+  // de respaldo usa poolTrasFamiliaSinPeso, no este pool ya ponderado.
   if(opts.level && opts.level!=='principiante'){
     pool = _crossfit15bApplyLevelWeight(pool, opts.level);
   }
@@ -6325,7 +6340,7 @@ function _crossfitPickMovement(pattern, wi, ti, opts){
     // familia de equipamiento, así que si el pool reducido no tiene ninguna
     // opción libre, se reintenta sobre el pool COMPLETO (antes del filtro de
     // familia) antes de resignarse a repetir.
-    if(enConflicto(mov) && poolAntesDeFamilia.length > pool.length){
+    if(enConflicto(mov) && poolAntesDeFamilia.length > poolTrasFamiliaSinPeso.length){
       let movAmplio = _pick(poolAntesDeFamilia, idx);
       let triesAmplio = 0;
       while(enConflicto(movAmplio) && triesAmplio < poolAntesDeFamilia.length){ triesAmplio++; movAmplio = _pick(poolAntesDeFamilia, idx+triesAmplio); }
