@@ -8298,19 +8298,36 @@ function autoGenerateProgram(){
       // día fue reemplazado por un benchmark (Fase 17C), no hay movimientos reales
       // que capturar — se deja tal cual estaba (equivalente a reset normal la próxima semana).
       const esUltimoDiaBenchmark = _pos17c && _pos17c.ti === ti;
-      if(focus==='crossfit' && ti === templates.length-1 && day._session && !esUltimoDiaBenchmark){
-        const wodBlock = day._session.blocks.find(b=>b.type==='metcon');
-        if(wodBlock){
-          const notes = wodBlock.movements[0].notes || '';
-          // Fase 18 (Fix 4, corrección de bug preexistente): el regex original
-          // ('/^(.+?) \(/') cortaba en el PRIMER paréntesis, truncando mal nombres
-          // que traen su propio paréntesis (ej. "Pistol (Single-Leg Squat)" quedaba
-          // como "Pistol", perdiendo la memoria semanal para ese movimiento). Se
-          // reemplaza por el mismo regex ya usado en regenerateCrossfitDay (línea
-          // ~3067), anclado al patrón real del sufijo: "(palabra, interferencia...)"
-          // — solo corta ahí, nunca en un paréntesis que sea parte del nombre.
-          _crossfit17bUltimoDiaMovs = notes.split(' · ').map(s=>{ const m=s.match(/^(.+?) \(\w+, interferencia/); return m?m[1]:null; }).filter(Boolean);
+      if(focus==='crossfit' && ti === templates.length-1 && day._session){
+        const _ultimoDiaMovs = [];
+        if(!esUltimoDiaBenchmark){
+          const wodBlock = day._session.blocks.find(b=>b.type==='metcon');
+          if(wodBlock){
+            const notes = wodBlock.movements[0].notes || '';
+            // Fase 18 (Fix 4, corrección de bug preexistente): el regex original
+            // ('/^(.+?) \(/') cortaba en el PRIMER paréntesis, truncando mal nombres
+            // que traen su propio paréntesis (ej. "Pistol (Single-Leg Squat)" quedaba
+            // como "Pistol", perdiendo la memoria semanal para ese movimiento). Se
+            // reemplaza por el mismo regex ya usado en regenerateCrossfitDay (línea
+            // ~3067), anclado al patrón real del sufijo: "(palabra, interferencia...)"
+            // — solo corta ahí, nunca en un paréntesis que sea parte del nombre.
+            _ultimoDiaMovs.push(...notes.split(' · ').map(s=>{ const m=s.match(/^(.+?) \(\w+, interferencia/); return m?m[1]:null; }).filter(Boolean));
+          }
         }
+        // Fix (auditoría de variabilidad, pedido de Luis: "velemos por la
+        // variabilidad de los wod y programaciones"): acá SOLO se capturaba el
+        // WOD — el movimiento de Fuerza (ej. "Pause Back Squat") y de Skills del
+        // último día de la semana no alimentaban nada, así que podían repetirse
+        // textual en el primer día de la semana siguiente sin que opts._used (que
+        // se reinicia vacío al empezar cada semana, más abajo) los viera nunca.
+        // A diferencia del WOD, Fuerza/Skills NUNCA se reemplazan por un benchmark
+        // (Fase 17C solo toca el bloque metcon) — no van detrás de
+        // esUltimoDiaBenchmark, siempre son reales.
+        const strBlock = day._session.blocks.find(b=>b.legacyField==='fuerza');
+        if(strBlock) _ultimoDiaMovs.push(...strBlock.movements.map(m=>m.name).filter(Boolean));
+        const skillBlock = day._session.blocks.find(b=>b.legacyField==='skills');
+        if(skillBlock) _ultimoDiaMovs.push(...skillBlock.movements.map(m=>m.name).filter(Boolean));
+        _crossfit17bUltimoDiaMovs = _ultimoDiaMovs;
       }
       const w = wi+1;
       const f = document.getElementById(`day_w${w}_d${dayIdx}_fuerza`);
