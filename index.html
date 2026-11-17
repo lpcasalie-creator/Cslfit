@@ -2031,13 +2031,17 @@ function renderHomeSessionCompact(){
   // Fix (venta directa a clientes "solo seguimiento"): esta tarjeta asumía que
   // TODO atleta sin programa asignado está esperando a que su coach le arme
   // uno — cierto para un alumno coacheado, pero una promesa falsa para un
-  // plan "solo seguimiento" (nunca le van a asignar nada, es justo lo que
-  // eligió). Mismo criterio que ya oculta "Mi Programa"/"Programación" para
-  // este plan: se oculta la tarjeta entera en vez de mostrar un mensaje que
-  // no le corresponde.
+  // plan "solo seguimiento" (nunca le van a asignar nada por un coach). Antes
+  // se ocultaba la tarjeta entera acá — tenía sentido cuando este plan no
+  // tenía NINGUNA forma de conseguir un programa. Ahora que puede autogenerar
+  // el suyo (Generador Automático abierto para este plan), ocultarla deja al
+  // alumno nuevo sin ningún aviso de que esa opción existe: ve un hueco en vez
+  // de una invitación a crear su primer programa.
   const isTrackingOnly = currentProfile && currentProfile.role === 'athlete' && currentProfile.plan !== 'coached';
   if(!r && isTrackingOnly){
-    card.style.display = 'none';
+    card.style.display = 'block';
+    el.innerHTML = `<p class="muted">Todavía no tienes un programa — crea el tuyo personalizado en segundos.</p>
+      <button class="btn small" style="width:100%; margin-top:10px;" onclick="showView('prog')">Crear mi programa</button>`;
     return;
   }
   // Fix (auditoría visual, pedido del coach: "la primera visión de los
