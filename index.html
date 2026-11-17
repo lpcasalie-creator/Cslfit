@@ -436,7 +436,7 @@
     <div class="brand" style="font-size:28px; font-weight:800; text-align:center; margin-bottom:6px; font-family:'Barlow Condensed',sans-serif; text-transform:uppercase;">
       CSL <span style="color:var(--lime);">TRAINING</span>
     </div>
-    <p style="text-align:center; color:var(--gray); font-size:13px; margin-bottom:24px;">Coach Luis Casali · <span style="color:#555;" id="authVersionTag">v3.7</span></p>
+    <p style="text-align:center; color:var(--gray); font-size:13px; margin-bottom:24px;">Coach Luis Casali</p>
 
     <div id="authLoading" class="card" style="text-align:center;">
       <div class="spinner" aria-hidden="true"></div>
@@ -2901,11 +2901,14 @@ async function saveRM(btn){
   btn.disabled = true;
   const textoOriginal = btn.textContent;
   btn.textContent = 'Guardando...';
+  // Se captura ANTES del insert — mismo criterio que saveScore/_esNuevoPR.
+  const prevRMs = _rmHistCache.filter(h=>h.movement===movement).map(h=>h.rm);
   try{
     const { error } = await sb.from('scores').insert({
       user_id: currentUser.id, name: movement, result: String(lastRM), category:'custom', score_type:'load'
     });
     if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
+    if(prevRMs.length && lastRM > Math.max(...prevRMs)) toast(`🎉 ¡Nuevo récord personal en ${movement}!`, 'success');
     await renderRMHistory();
     await populateRMChartMovements();
     await renderScores(); // el mismo registro también vive en la lista de Scores
@@ -10768,6 +10771,9 @@ async function saveScore(btn){
   btn.disabled = true;
   const textoOriginal = btn.textContent;
   btn.textContent = 'Guardando...';
+  // Se captura ANTES del insert — _esNuevoPR necesita comparar contra lo que
+  // ya existía, no contra la lista recién actualizada.
+  const prevEntries = _scoresCache.filter(s=>s.name===name);
   try{
     const { error } = await sb.from('scores').insert({
       user_id: currentUser.id, name, result, category:cat, score_type:scoreType
@@ -10775,12 +10781,31 @@ async function saveScore(btn){
     if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
     document.getElementById('scoreName').value='';
     document.getElementById('scoreResult').value='';
+    if(_esNuevoPR(prevEntries, scoreType, result)) toast(`🎉 ¡Nuevo récord personal en ${name}!`, 'success');
     await renderScores();
     await populateScoreChartMovements();
   } finally {
     btn.disabled = false;
     btn.textContent = textoOriginal;
   }
+}
+// Fix (auditoría producto/marketing: "silencio total al lograr un PR" — el
+// momento más emocional de una app de entrenamiento no tenía ninguna señal
+// distinta a guardar cualquier otro resultado). Misma comparación que
+// bestValue() (tiempo: menor gana: carga/reps: mayor gana), pero contra los
+// registros PREVIOS (antes del insert), no contra el grupo ya actualizado.
+function _esNuevoPR(prevEntries, scoreType, nuevoResultStr){
+  if(scoreType==='rounds_reps' || !prevEntries.length) return false;
+  const nuevoVal = scoreType==='time' ? timeToSeconds(nuevoResultStr) : parseFloat(nuevoResultStr);
+  if(nuevoVal===null || isNaN(nuevoVal)) return false;
+  let bestVal = null;
+  prevEntries.forEach(e=>{
+    const v = scoreType==='time' ? timeToSeconds(e.result) : parseFloat(e.result);
+    if(v===null || isNaN(v)) return;
+    if(bestVal===null || (scoreType==='time' ? v<bestVal : v>bestVal)) bestVal=v;
+  });
+  if(bestVal===null) return false;
+  return scoreType==='time' ? nuevoVal<bestVal : nuevoVal>bestVal;
 }
 function bestValue(entries, scoreType){
   // devuelve el índice del mejor score dentro de "entries" (mismo movimiento), o -1 si no aplica ranking
@@ -11076,7 +11101,9 @@ async function renderMessageThread(athleteId){
     const mine = m.sender_id === currentUser.id;
     const time = new Date(m.created_at).toLocaleString('es-CL', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
     return `<div class="msg-row ${mine?'mine':''}"><div><div class="msg-bubble">${escapeHtml(m.body)}</div><div class="msg-meta">${time}</div></div></div>`;
-  }).join('') : '<p class="muted" style="text-align:center;">Todavía no hay mensajes. Escribe el primero.</p>';
+  }).join('') : `<p class="muted" style="text-align:center;">${isCoach
+    ? 'Todavía no hay mensajes con este alumno — escribile algo para arrancar la conversación.'
+    : 'Escribile directo a tu coach — dudas de técnica, feedback de tu última sesión, lo que necesites.'}</p>`;
   list.scrollTop = list.scrollHeight;
 
   const unreadIds = rows.filter(m=>m.sender_id!==currentUser.id && !m.read_at).map(m=>m.id);
@@ -11335,7 +11362,16 @@ function applyBranding(bp){
   const homeBrandTitle = document.getElementById('homeBrandTitle');
   if(homeBrandTitle) homeBrandTitle.textContent = name;
   const homeBrandTagline = document.getElementById('homeBrandTagline');
-  if(homeBrandTagline) homeBrandTagline.textContent = [handle, tagline].filter(Boolean).join(' · ');
+  // Fix (auditoría producto/marketing: "el @ de Instagram es texto plano, no
+  // se puede tocar") — cualquier cliente que entra a Configuración y ve el
+  // handle no podía seguirlo. Pasa a link real; el resto del tagline queda
+  // texto plano (innerHTML obliga a escapar ambos a mano, antes era textContent).
+  if(homeBrandTagline){
+    const handleLink = handle
+      ? `<a href="https://instagram.com/${encodeURIComponent(handle.replace(/^@/,''))}" target="_blank" rel="noopener">${escapeHtml(handle)}</a>`
+      : '';
+    homeBrandTagline.innerHTML = [handleLink, tagline ? escapeHtml(tagline) : ''].filter(Boolean).join(' · ');
+  }
 
   const footer = document.getElementById('appFooter');
   if(footer) footer.innerHTML = `${handle ? escapeHtml(handle)+' · ' : ''}<span>${escapeHtml(name)}</span>${creds?' · '+escapeHtml(creds):''} · <span id="appVersionTag">${APP_VERSION_DISPLAY}</span>`;
