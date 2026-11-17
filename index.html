@@ -586,6 +586,17 @@
       <button class="btn secondary" style="margin-top:10px;" onclick="setPassword()">Guardar contraseña</button>
       <p id="passwordMsg" style="font-size:12px; margin-top:8px;"></p>
     </div>
+    <!-- Fix (auditoría producto/marketing: "no hay forma de pedir upgrade a
+         coaching completo adentro de la app"). Solo visible para "solo
+         seguimiento" (toggle en onLoggedIn). Manda un mensaje al coach por el
+         chat que ya existe — no hay cobro integrado, así que el cierre de la
+         venta sigue siendo manual, esto solo abre la conversación. -->
+    <div class="card" id="upgradeCoachingCard" style="display:none;">
+      <h3>¿Querés el siguiente nivel?</h3>
+      <p class="muted">Con coaching completo, tu coach te arma el programa directamente, semana a semana, ajustado a cómo te fue.</p>
+      <button class="btn" style="margin-top:10px;" onclick="requestFullCoaching(this)">Pedir coaching completo</button>
+      <p id="upgradeCoachingMsg" style="font-size:12px; margin-top:8px;"></p>
+    </div>
     <!-- Fix (puntos bajos — producto): sin esto, un cliente que paga no tenía
          forma de bajar sus propios datos ni de borrarlos — genera desconfianza
          justo en el momento en que se le empieza a cobrar. Borrado completo de
@@ -11147,6 +11158,27 @@ async function sendMessage(btn){
     btn.textContent = textoOriginal;
   }
 }
+// Fix (auditoría producto/marketing: upgrade in-app para "solo seguimiento").
+// Reutiliza el mismo insert que sendMessage() — es un mensaje más en el
+// mismo chat, no un flujo de venta aparte. El coach lo ve como cualquier
+// mensaje nuevo (badge de no leído ya existente), y responde ahí mismo.
+async function requestFullCoaching(btn){
+  if(btn.disabled) return;
+  btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Enviando...';
+  const msgEl = document.getElementById('upgradeCoachingMsg');
+  try{
+    const body = 'Hola! Me gustaría pasar a coaching completo — ¿me contás cómo sería?';
+    const { error } = await sb.from('messages').insert({ athlete_id: currentUser.id, sender_id: currentUser.id, body });
+    if(error){ toast('Error al enviar: '+error.message, 'error'); return; }
+    if(msgEl) msgEl.textContent = '✓ Mensaje enviado — tu coach te responde por el chat.';
+    toast('Mensaje enviado a tu coach', 'success');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
 async function refreshUnreadMessagesBadge(){
   const dot = document.getElementById('messagesUnreadDot');
   if(!dot || !currentUser) return;
@@ -11443,6 +11475,12 @@ async function onLoggedIn(user){
   if(progGroupBtn) progGroupBtn.style.display = 'flex';
   const homeMiProgramaBtn = document.getElementById('homeMiProgramaBtn');
   if(homeMiProgramaBtn) homeMiProgramaBtn.style.display = 'block';
+  // Fix (auditoría producto/marketing: "no hay forma de pedir upgrade a
+  // coaching completo adentro de la app" — la oportunidad de venta más
+  // grande sin explotar). Solo visible para "solo seguimiento": un alumno
+  // coacheado ya tiene lo que esto ofrece.
+  const upgradeCard = document.getElementById('upgradeCoachingCard');
+  if(upgradeCard) upgradeCard.style.display = isTrackingOnly ? 'block' : 'none';
   document.getElementById('homeUserEmail').textContent = user.email;
   const wus = document.getElementById('weightUnitSelect'); if(wus) wus.value = currentWeightUnit;
   const wl = document.getElementById('rmWeightLabel'); if(wl) wl.textContent = `Peso (${currentWeightUnit})`;
