@@ -866,6 +866,26 @@
       <button class="btn" onclick="saveBody(this)">Guardar medición</button>
     </div>
 
+    <!-- Fix (rescate de la auditoría competitiva: "CoachPilot tiene
+         nutrición y nosotros no tenemos nada"). Sin IA ni base de datos de
+         alimentos — solo la meta que define el coach (ver "Macros" en el
+         panel de Alumnos) y un registro diario simple, mismo criterio
+         existing/update-or-insert que ya usa saveBody() para la fecha. -->
+    <div class="card">
+      <h3>Macros de hoy</h3>
+      <p class="muted" id="macroTargetSummary">Cargando objetivo...</p>
+      <div class="grid2">
+        <div><label>Calorías</label><input type="number" step="1" id="macroLogCals"></div>
+        <div><label>Proteína (g)</label><input type="number" step="1" id="macroLogProt"></div>
+      </div>
+      <div class="grid2">
+        <div><label>Carbos (g)</label><input type="number" step="1" id="macroLogCarb"></div>
+        <div><label>Grasas (g)</label><input type="number" step="1" id="macroLogFat"></div>
+      </div>
+      <button class="btn secondary" onclick="saveMacroLog(this)">Registrar hoy</button>
+      <div id="macroLogList" style="margin-top:14px;"></div>
+    </div>
+
     <div class="card">
       <h3>Progreso</h3>
       <label>Métrica</label>
@@ -1713,7 +1733,7 @@ function showView(id){
   if(id==='athletes'){ renderAthletesList(); renderInviteCodesList(); }
   if(id==='ranking'){ populateRankingMovements(); }
   if(id==='skills'){ refreshSkillsHistory().then(()=>{ renderSkillsSliders(); populateSkillsDates(); renderSkillsHistory(); }); }
-  if(id==='body'){ renderBodyList().then(populateBodyChart); }
+  if(id==='body'){ renderBodyList().then(populateBodyChart); renderMacroTarget(); renderMacroLogList(); }
   if(id==='rm') renderRMHistory().then(populateRMChartMovements);
   if(id==='mov') renderMov();
   if(id==='scores'){ renderBenchmarkSelect(); renderScores().then(populateScoreChartMovements); }
@@ -3224,6 +3244,74 @@ async function renderBodyList(){
       .map(k=>`${BODY_METRICS[k].label}: ${h[BODY_METRICS[k].col]}${BODY_METRICS[k].unit}`).join(' · ');
     return `<div class="score-item"><span><b>${h.entry_date}</b><br><span class="muted">${parts||'Sin datos'}</span></span><button type="button" class="del" onclick="delBody('${h.id}')">Borrar</button></div>`;
   }).join('') : emptyStateHtml('Sin mediciones registradas.');
+}
+/* ---------------- MACROS (alumno) ---------------- */
+async function renderMacroTarget(){
+  const el = document.getElementById('macroTargetSummary');
+  if(!el) return;
+  const { data } = await sb.from('nutrition_targets').select('*').eq('athlete_id', currentUser.id).maybeSingle();
+  if(!data || (!data.calories && !data.protein && !data.carbs && !data.fats)){
+    el.textContent = 'Tu coach todavía no te definió una meta de macros.';
+    return;
+  }
+  const parts = [];
+  if(data.calories) parts.push(`${data.calories} kcal`);
+  if(data.protein) parts.push(`${data.protein}g proteína`);
+  if(data.carbs) parts.push(`${data.carbs}g carbos`);
+  if(data.fats) parts.push(`${data.fats}g grasas`);
+  el.innerHTML = `<b>Objetivo:</b> ${parts.join(' · ')}`;
+}
+let _macroLogCache = [];
+async function renderMacroLogList(){
+  const { data } = await sb.from('nutrition_logs').select('*')
+    .eq('user_id', currentUser.id).order('log_date', {ascending:false}).limit(7);
+  _macroLogCache = data || [];
+  const el = document.getElementById('macroLogList');
+  if(!el) return;
+  el.innerHTML = _macroLogCache.length ? _macroLogCache.map(h=>{
+    const parts = [];
+    if(h.calories) parts.push(`${h.calories} kcal`);
+    if(h.protein) parts.push(`${h.protein}g P`);
+    if(h.carbs) parts.push(`${h.carbs}g C`);
+    if(h.fats) parts.push(`${h.fats}g G`);
+    return `<div class="score-item"><span><b>${h.log_date}</b><br><span class="muted">${parts.join(' · ')||'Sin datos'}</span></span><button type="button" class="del" onclick="delMacroLog('${h.id}')">Borrar</button></div>`;
+  }).join('') : emptyStateHtml('Sin registros esta semana.');
+}
+async function saveMacroLog(btn){
+  const date = _todayDateStr();
+  const row = {
+    user_id: currentUser.id, log_date: date,
+    calories: parseInt(document.getElementById('macroLogCals').value) || null,
+    protein: parseFloat(document.getElementById('macroLogProt').value) || null,
+    carbs: parseFloat(document.getElementById('macroLogCarb').value) || null,
+    fats: parseFloat(document.getElementById('macroLogFat').value) || null,
+  };
+  if(!row.calories && !row.protein && !row.carbs && !row.fats) return;
+  // Mismo criterio anti-doble-tap que saveBody/saveRM/saveScore.
+  if(btn.disabled) return;
+  btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Guardando...';
+  try{
+    const { data: existing } = await sb.from('nutrition_logs').select('id')
+      .eq('user_id', currentUser.id).eq('log_date', date).maybeSingle();
+    const { error } = existing
+      ? await sb.from('nutrition_logs').update(row).eq('id', existing.id)
+      : await sb.from('nutrition_logs').insert(row);
+    if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
+    ['macroLogCals','macroLogProt','macroLogCarb','macroLogFat'].forEach(id=>document.getElementById(id).value='');
+    await renderMacroLogList();
+    toast('Registro de hoy guardado', 'success');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+async function delMacroLog(id){
+  if(!confirmDelete('¿Borrar este registro? No se puede deshacer.')) return;
+  const { error } = await sb.from('nutrition_logs').delete().eq('id', id);
+  if(error){ toast('Error al borrar: '+error.message, 'error'); return; }
+  await renderMacroLogList();
 }
 async function delBody(id){
   if(!confirmDelete('¿Borrar esta medición? No se puede deshacer.')) return;
@@ -9333,6 +9421,7 @@ async function renderAthletesList(){
         <span style="display:flex; gap:6px; flex-shrink:0; flex-wrap:wrap;">
           <button class="btn small secondary" onclick="toggleAthleteProgress('${a.id}')">Progreso</button>
           <button class="btn small secondary" onclick="toggleAssignForm('${a.id}')">Asignar</button>
+          <button class="btn small secondary" onclick="toggleMacroForm('${a.id}')">Macros</button>
           <button class="btn small secondary" onclick="goToAthleteMessages('${a.id}')">Mensaje</button>
         </span>
       </div>
@@ -9350,6 +9439,23 @@ async function renderAthletesList(){
         <label>Fecha de inicio</label>
         <input type="date" id="assignDate_${a.id}" value="${asg?asg.start_date:_todayDateStr()}">
         <button class="btn small" style="margin-top:8px;" onclick="confirmAssignAthlete('${a.id}')">Confirmar</button>
+      </div>
+      <!-- Fix (rescate de la auditoría competitiva: "CoachPilot ofrece
+           nutrición y nosotros no tenemos nada") — meta de macros que el
+           coach le define al alumno. Nada de IA ni base de datos de
+           alimentos (fuera de escala) — solo un objetivo numérico que el
+           alumno ve y registra contra, ver sección "Macros" en #body. -->
+      <div id="macroForm_${a.id}" style="display:none; margin-top:10px;">
+        <label>Calorías objetivo</label>
+        <input type="number" step="1" id="macroCals_${a.id}" placeholder="Ej: 2200">
+        <div class="grid2">
+          <div><label>Proteína (g)</label><input type="number" step="1" id="macroProt_${a.id}"></div>
+          <div><label>Carbos (g)</label><input type="number" step="1" id="macroCarb_${a.id}"></div>
+        </div>
+        <label>Grasas (g)</label>
+        <input type="number" step="1" id="macroFat_${a.id}">
+        <button class="btn small" style="margin-top:8px;" onclick="saveMacroTarget('${a.id}', this)">Guardar macros</button>
+        <p id="macroMsg_${a.id}" style="font-size:12px; margin-top:6px;"></p>
       </div>
     </div>`;
   }).join('');
@@ -9518,6 +9624,45 @@ async function confirmAssignAthlete(athleteId){
     await renderAthletesList();
   } finally {
     if(btn) btn.disabled = false;
+  }
+}
+
+/* ---------------- MACROS OBJETIVO (coach → alumno) ---------------- */
+function toggleMacroForm(athleteId){
+  const el = document.getElementById(`macroForm_${athleteId}`);
+  const abriendo = el.style.display === 'none';
+  el.style.display = abriendo ? 'block' : 'none';
+  if(abriendo) loadMacroTarget(athleteId);
+}
+async function loadMacroTarget(athleteId){
+  const { data } = await sb.from('nutrition_targets').select('*').eq('athlete_id', athleteId).maybeSingle();
+  document.getElementById(`macroCals_${athleteId}`).value = data?.calories ?? '';
+  document.getElementById(`macroProt_${athleteId}`).value = data?.protein ?? '';
+  document.getElementById(`macroCarb_${athleteId}`).value = data?.carbs ?? '';
+  document.getElementById(`macroFat_${athleteId}`).value = data?.fats ?? '';
+}
+async function saveMacroTarget(athleteId, btn){
+  const calories = parseInt(document.getElementById(`macroCals_${athleteId}`).value) || null;
+  const protein = parseFloat(document.getElementById(`macroProt_${athleteId}`).value) || null;
+  const carbs = parseFloat(document.getElementById(`macroCarb_${athleteId}`).value) || null;
+  const fats = parseFloat(document.getElementById(`macroFat_${athleteId}`).value) || null;
+  if(btn.disabled) return;
+  btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Guardando...';
+  const msgEl = document.getElementById(`macroMsg_${athleteId}`);
+  try{
+    const { data: existing } = await sb.from('nutrition_targets').select('id').eq('athlete_id', athleteId).maybeSingle();
+    const row = { athlete_id: athleteId, calories, protein, carbs, fats, updated_at: new Date().toISOString() };
+    const { error } = existing
+      ? await sb.from('nutrition_targets').update(row).eq('id', existing.id)
+      : await sb.from('nutrition_targets').insert(row);
+    if(error){ toast('Error al guardar macros: '+error.message, 'error'); return; }
+    if(msgEl) msgEl.textContent = '✓ Macros guardadas.';
+    toast('Macros actualizadas', 'success');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
   }
 }
 
@@ -11327,7 +11472,7 @@ function signOut(){ sb.auth.signOut().then(()=>location.reload()); }
 /* ---------------- Mis datos: descargar / borrar (puntos bajos — negocio) ---------------- */
 // Mismas tablas personales que ya se leen/escriben en el resto de la app
 // (ver sb.from(...) en cada sección) — un solo lugar que las lista juntas.
-const _MY_DATA_TABLES = ['scores','body_entries','skills_entries','hyrox_results','wl_analysis','session_completions','readiness_checkins','checkins','wod_notes','pct_data'];
+const _MY_DATA_TABLES = ['scores','body_entries','skills_entries','hyrox_results','wl_analysis','session_completions','readiness_checkins','checkins','wod_notes','pct_data','nutrition_logs'];
 async function downloadMyData(btn){
   if(btn.disabled) return;
   btn.disabled = true;
