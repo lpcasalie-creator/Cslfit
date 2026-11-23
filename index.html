@@ -1119,6 +1119,17 @@
       <div id="inviteCodesList" style="margin-top:14px;"></div>
     </div>
 
+    <!-- Fix (resumen inteligente de check-ins — pedido de la auditoría
+         CoachPilot que quedó pendiente): readiness_checkins ya existe (3
+         preguntas diarias del alumno), pero el coach no tenía forma de
+         verlo agregado — tenía que entrar alumno por alumno. Solo lista a
+         quien de verdad necesita atención, no a todos. -->
+    <div class="card" id="readinessAlertsCard" style="display:none;">
+      <h2>Para revisar esta semana</h2>
+      <p class="muted">Alumnos con readiness baja, dolor articular, o tendencia a la baja en los últimos 7 días.</p>
+      <div id="readinessAlertsList" style="margin-top:10px;"></div>
+    </div>
+
     <div class="card">
       <h2>Mis Alumnos</h2>
       <p class="muted">Se crean solos cuando alguien se loguea por primera vez con su email.</p>
@@ -9335,10 +9346,59 @@ async function getLastActivityMap(athleteIds){
   return map;
 }
 
+// Fix (resumen inteligente de check-ins, pedido pendiente de la auditoría
+// CoachPilot): readiness_checkins ya existía (3 preguntas diarias del
+// alumno, usadas para ajustar volumen automático — ver
+// loadTodayReadiness/_isLowReadiness más arriba), pero el coach no tenía
+// ninguna vista agregada — tenía que entrar uno por uno a "Progreso" para
+// verlo. Solo lista a quien de verdad necesita atención (no a todos),
+// mismo criterio _readinessScore/_isLowReadiness que ya usa el ajuste
+// automático de volumen, para no inventar un segundo criterio paralelo.
+async function renderReadinessAlerts(athleteIds, athletes){
+  const el = document.getElementById('readinessAlertsCard');
+  if(!el) return;
+  if(!athleteIds.length){ el.style.display = 'none'; return; }
+  const since = new Date(); since.setDate(since.getDate()-7);
+  const { data } = await sb.from('readiness_checkins').select('*')
+    .in('user_id', athleteIds).gte('checkin_date', localDateStr(since)).order('checkin_date', {ascending:true});
+  const byAthlete = {};
+  (data||[]).forEach(r=>{ (byAthlete[r.user_id]=byAthlete[r.user_id]||[]).push(r); });
+
+  const nameMap = {};
+  athletes.forEach(a=>{ nameMap[a.id] = a.full_name || a.email; });
+
+  const alerts = [];
+  Object.keys(byAthlete).forEach(athleteId=>{
+    const rows = byAthlete[athleteId]; // ascendente por fecha (checkin_date)
+    const latest = rows[rows.length-1];
+    const reasons = [];
+    if(latest.joint_discomfort) reasons.push('dolor articular hoy');
+    else if(_readinessScore(latest) <= 2.5) reasons.push('readiness baja hoy');
+    const lastTwo = rows.slice(-2);
+    if(lastTwo.length===2 && lastTwo.every(r=>r.sleep_quality<=2)) reasons.push('sueño bajo 2 días seguidos');
+    // Tendencia: promedio de la mitad más reciente de la semana vs. la mitad
+    // anterior — necesita al menos 4 registros para que la comparación
+    // tenga algo de sentido (con 2-3 es solo ruido día a día).
+    if(rows.length>=4){
+      const mid = Math.floor(rows.length/2);
+      const prevAvg = rows.slice(0,mid).reduce((s,r)=>s+_readinessScore(r),0)/mid;
+      const recentAvg = rows.slice(mid).reduce((s,r)=>s+_readinessScore(r),0)/(rows.length-mid);
+      if(prevAvg - recentAvg >= 0.75) reasons.push('readiness bajando esta semana');
+    }
+    if(reasons.length) alerts.push({ name: nameMap[athleteId] || 'Alumno', reasons });
+  });
+
+  if(!alerts.length){ el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  document.getElementById('readinessAlertsList').innerHTML = alerts.map(a=>
+    `<div class="score-item"><span><b>${escapeHtml(a.name)}</b><br><span class="muted" style="color:#e8d16a;">${a.reasons.join(' · ')}</span></span></div>`
+  ).join('');
+}
 async function renderAthletesList(){
   const el = document.getElementById('athletesList');
   const { data: athletes, error: e1 } = await sb.from('profiles').select('*').eq('role','athlete').eq('coach_id', currentUser.id);
   const athleteIds = (athletes||[]).map(a=>a.id);
+  renderReadinessAlerts(athleteIds, athletes||[]); // no bloquea el resto del render — su propia tarjeta
   const { data: assigns, error: e2 } = athleteIds.length
     ? await sb.from('assignments').select('id, athlete_id, program_id, start_date, programs(name, weeks)').in('athlete_id', athleteIds)
     : { data: [], error: null };
