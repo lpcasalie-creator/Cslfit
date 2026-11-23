@@ -9446,6 +9446,36 @@ async function renderAthletesList(){
            alimentos (fuera de escala) — solo un objetivo numérico que el
            alumno ve y registra contra, ver sección "Macros" en #body. -->
       <div id="macroForm_${a.id}" style="display:none; margin-top:10px;">
+        <!-- Fix (pedido: "en base al peso y % grasa, la app podría dar los
+             macros multiplicando por factor de actividad física") — Katch-
+             McArdle para el BMR porque solo necesita peso + % grasa (los
+             dos datos que ya se registran en Composición Corporal) — no
+             hace falta altura ni edad, que hoy no se registran en ningún
+             lado. El coach revisa/ajusta el resultado antes de guardar,
+             nunca se guarda solo. -->
+        <div style="background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:10px; margin-bottom:12px;">
+          <p style="font-size:11px; font-weight:700; color:var(--lime); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Calcular sugerido</p>
+          <p class="muted" id="macroBodyData_${a.id}" style="font-size:11px; margin-bottom:8px;">Cargando datos de composición corporal...</p>
+          <div class="grid2">
+            <div><label style="font-size:11px;">Nivel de actividad</label>
+              <select id="macroActivity_${a.id}" style="font-size:12px;">
+                <option value="sedentario">Sedentario</option>
+                <option value="ligero">Ligero (1-3 días/sem)</option>
+                <option value="moderado" selected>Moderado (3-5 días/sem)</option>
+                <option value="activo">Activo (6-7 días/sem)</option>
+                <option value="muy_activo">Muy activo / trabajo físico</option>
+              </select>
+            </div>
+            <div><label style="font-size:11px;">Objetivo</label>
+              <select id="macroGoal_${a.id}" style="font-size:12px;">
+                <option value="deficit">Déficit (bajar grasa)</option>
+                <option value="mantenimiento" selected>Mantenimiento</option>
+                <option value="superavit">Superávit (ganar masa)</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn small secondary" style="margin-top:8px; width:100%;" onclick="calcularMacrosAuto('${a.id}')">Calcular sugerido</button>
+        </div>
         <label>Calorías objetivo</label>
         <input type="number" step="1" id="macroCals_${a.id}" placeholder="Ej: 2200">
         <div class="grid2">
@@ -9640,6 +9670,55 @@ async function loadMacroTarget(athleteId){
   document.getElementById(`macroProt_${athleteId}`).value = data?.protein ?? '';
   document.getElementById(`macroCarb_${athleteId}`).value = data?.carbs ?? '';
   document.getElementById(`macroFat_${athleteId}`).value = data?.fats ?? '';
+  // Muestra qué datos de composición corporal hay disponibles ANTES de que
+  // el coach toque "Calcular" — si no hay medición con peso+% grasa, mejor
+  // decirlo acá que dejar que el botón falle en silencio.
+  const bodyEl = document.getElementById(`macroBodyData_${athleteId}`);
+  if(bodyEl){
+    const { data: body } = await sb.from('body_entries').select('*')
+      .eq('user_id', athleteId).order('entry_date', {ascending:false}).limit(1).maybeSingle();
+    bodyEl.textContent = (body && body.weight && body.pgc)
+      ? `Última medición: ${body.weight}kg, ${body.pgc}% grasa (${body.entry_date}).`
+      : 'Sin medición de peso + % grasa todavía — no se puede calcular automático (podés cargar las calorías a mano).';
+  }
+}
+// Fix (pedido: "en base al peso y % grasa, la app podría dar los macros
+// multiplicando por factor de actividad física"). BMR por Katch-McArdle
+// (370 + 21.6×masa magra) — elegido porque solo necesita peso + % grasa,
+// los dos datos que YA se registran en Composición Corporal; Mifflin-St
+// Jeor (la otra fórmula estándar) necesitaría altura y edad, que hoy no
+// se registran en ningún lado de la app. Proteína a 2g/kg de peso total
+// (estándar para atletas de fuerza/CrossFit, no masa magra) y grasas al
+// 25% de las calorías — ambos criterios comunes en nutrición deportiva,
+// no inventados. El coach revisa/ajusta antes de guardar, nunca se
+// guarda directo.
+const MACRO_ACTIVITY_FACTORS = { sedentario:1.2, ligero:1.375, moderado:1.55, activo:1.725, muy_activo:1.9 };
+const MACRO_GOAL_ADJUST = { deficit:-0.20, mantenimiento:0, superavit:0.10 };
+async function calcularMacrosAuto(athleteId){
+  const msgEl = document.getElementById(`macroMsg_${athleteId}`);
+  const { data } = await sb.from('body_entries').select('*')
+    .eq('user_id', athleteId).order('entry_date', {ascending:false}).limit(1).maybeSingle();
+  if(!data || !data.weight || !data.pgc){
+    if(msgEl) msgEl.textContent = 'Necesita una medición con peso y % grasa en Composición Corporal para calcular.';
+    return;
+  }
+  const activity = document.getElementById(`macroActivity_${athleteId}`).value;
+  const goal = document.getElementById(`macroGoal_${athleteId}`).value;
+  const lbm = data.weight * (1 - data.pgc/100);
+  const bmr = 370 + 21.6 * lbm;
+  const tdee = bmr * (MACRO_ACTIVITY_FACTORS[activity] || 1.55);
+  const calories = Math.round(tdee * (1 + (MACRO_GOAL_ADJUST[goal] || 0)));
+  const protein = Math.round(data.weight * 2);
+  const fatCals = calories * 0.25;
+  const fat = Math.round(fatCals / 9);
+  const carbCals = Math.max(0, calories - protein*4 - fatCals);
+  const carbs = Math.round(carbCals / 4);
+
+  document.getElementById(`macroCals_${athleteId}`).value = calories;
+  document.getElementById(`macroProt_${athleteId}`).value = protein;
+  document.getElementById(`macroCarb_${athleteId}`).value = carbs;
+  document.getElementById(`macroFat_${athleteId}`).value = fat;
+  if(msgEl) msgEl.textContent = `Calculado con ${data.weight}kg y ${data.pgc}% grasa (medición del ${data.entry_date}). Ajustalo si querés antes de guardar.`;
 }
 async function saveMacroTarget(athleteId, btn){
   const calories = parseInt(document.getElementById(`macroCals_${athleteId}`).value) || null;
