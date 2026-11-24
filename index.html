@@ -464,6 +464,13 @@
       <h2 style="font-size:19px; color:var(--lime); margin-bottom:10px;">Registrarse</h2>
       <label>Código de invitación</label>
       <input type="text" id="signupCode" placeholder="Ej: DANIEL-4F2A" style="text-transform:uppercase;">
+      <!-- Fix (pedido: "trabajaremos en los mensajes" — en producción, los 8
+           alumnos de Luis aparecían como "Alumno" genérico en Mensajes. Causa
+           raíz: este formulario nunca pidió el nombre — profiles.full_name
+           queda null para siempre, y eso se nota en TODA la app (Mensajes,
+           lista de Alumnos, saludo de Home), no solo acá. -->
+      <label>Tu nombre</label>
+      <input type="text" id="signupName" placeholder="Nombre y apellido">
       <label>Tu email</label>
       <input type="email" id="signupEmail" placeholder="tu@email.com">
       <label>Crea tu contraseña</label>
@@ -11543,12 +11550,13 @@ function showLoginForm(){
 
 async function signUpWithCode(){
   const code = document.getElementById('signupCode').value.trim().toUpperCase();
+  const name = document.getElementById('signupName').value.trim();
   const email = document.getElementById('signupEmail').value.trim();
   const password = document.getElementById('signupPassword').value;
   const msg = document.getElementById('signupMsg');
   msg.style.color = '#ff8c8c';
 
-  if(!code || !email || !password){ msg.textContent = 'Completa todos los campos.'; return; }
+  if(!code || !name || !email || !password){ msg.textContent = 'Completa todos los campos.'; return; }
   if(password.length < 6){ msg.textContent = 'La contraseña debe tener al menos 6 caracteres.'; return; }
 
   msg.style.color = '#bbbbbb';
@@ -11561,13 +11569,25 @@ async function signUpWithCode(){
   // cliente) para que un trigger en Supabase pueda rechazar el alta a nivel de
   // base de datos si no viene un código válido — la validación de arriba es
   // para dar feedback rápido al usuario, no la barrera de seguridad real.
-  const { data, error } = await sb.auth.signUp({ email, password, options: { data: { invite_code: code } } });
+  // full_name viaja en el mismo bag de metadatos, mismo criterio — si el
+  // trigger que arma la fila de profiles ya lee invite_code de ahí, es el
+  // lugar más consistente para que también lea el nombre.
+  const { data, error } = await sb.auth.signUp({ email, password, options: { data: { invite_code: code, full_name: name } } });
   if(error){ msg.style.color='#ff8c8c'; msg.textContent = 'Error: ' + error.message; return; }
 
   let consumeFailed = false;
   if(data.user){
     const { error: consumeError } = await sb.rpc('consume_invite_code', { p_code: code, p_user: data.user.id });
     if(consumeError){ consumeFailed = true; console.error('consume_invite_code failed', consumeError); }
+    // Fix (red de respaldo): si ya hay sesión activa (no requiere confirmar
+    // email), esto escribe el nombre directo — no depende de que el trigger
+    // del lado de Supabase lea full_name de los metadatos. Si SÍ hace falta
+    // confirmar email, esto no corre (sin sesión todavía no se puede escribir
+    // por RLS) y el nombre queda a cargo exclusivo de los metadatos de arriba.
+    if(data.session){
+      const { error: nameError } = await sb.from('profiles').update({ full_name: name }).eq('id', data.user.id);
+      if(nameError) console.error('No se pudo guardar el nombre directamente:', nameError);
+    }
   }
 
   if(data.session){
