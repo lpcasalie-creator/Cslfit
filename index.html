@@ -9320,6 +9320,14 @@ async function deleteInviteCode(code){
 }
 
 async function markPaidToday(athleteId){
+  // Fix (auditoría coach: "es la única acción que toca dinero y la que
+  // menos fricción tiene" — vive al lado de otros 5 botones en una fila
+  // densa, y escribía directo sin ningún aviso. Un toque sin querer
+  // marcaba a un alumno sin pago como al día, y nada en la pantalla lo
+  // habría señalado — recién se notaría más tarde, al ver la fecha mal).
+  // Mismo criterio confirm() nativo que ya usa confirmDelete(): acción
+  // poco frecuente, no amerita un modal propio.
+  if(!confirm('¿Marcar a este alumno como pagado hoy?')) return;
   // Mismo hallazgo que initBodyDate(): toISOString() usa UTC, no hora local —
   // un pago marcado de noche en Chile quedaba registrado bajo la fecha de MAÑANA.
   const today = _todayDateStr();
