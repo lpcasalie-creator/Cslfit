@@ -823,21 +823,32 @@
       <button class="btn secondary small" onclick="resetPctTable()">Limpiar todos los PR</button>
     </div>
 
+    <!-- Fix (auditoría de diseño: "la tabla %BS se corta en el borde derecho,
+         sin forma de hacer scroll" — 7 columnas forzadas a width:100% en una
+         pantalla de 390px simplemente no entran. En vez de sacar columnas
+         (cada una es un dato distinto, ninguna sobra), se envuelve en un
+         contenedor con scroll horizontal propio y un aviso de que se puede
+         deslizar — mismo criterio de "no perder datos" que ya usa esta tabla
+         al dejar que el nombre del movimiento se parta en varias líneas en
+         vez de truncarlo. -->
     <div class="card">
-      <table id="pctTable">
-        <thead>
-          <tr>
-            <th style="text-align:left;">Movimiento</th>
-            <th id="pctPrHeader">Tu PR<br>(kg)</th>
-            <th>Reps</th>
-            <th>1RM<br>ideal</th>
-            <th>%<br>BS</th>
-            <th>Óptimo/<br>Sub-óptimo</th>
-            <th id="pctFaltanHeader">Kg<br>faltan</th>
-          </tr>
-        </thead>
-        <tbody id="pctTableBody"></tbody>
-      </table>
+      <p class="muted" style="font-size:11px; margin-bottom:8px;">← Desliza la tabla para ver todas las columnas →</p>
+      <div style="overflow-x:auto;">
+        <table id="pctTable" style="min-width:560px;">
+          <thead>
+            <tr>
+              <th style="text-align:left;">Movimiento</th>
+              <th id="pctPrHeader">Tu PR<br>(kg)</th>
+              <th>Reps</th>
+              <th>1RM<br>ideal</th>
+              <th>%<br>BS</th>
+              <th>Óptimo/<br>Sub-óptimo</th>
+              <th id="pctFaltanHeader">Kg<br>faltan</th>
+            </tr>
+          </thead>
+          <tbody id="pctTableBody"></tbody>
+        </table>
+      </div>
     </div>
   </section>
 
