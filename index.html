@@ -9152,6 +9152,19 @@ function renderActiveProgramCard(){
   const card = document.getElementById('activeProgramCard');
   const r = computeTodayProgramEntry();
   _activeEntryCache = r;
+  // Fix (auditoría del alumno: "un solo-seguimiento nuevo cae en WOD sin
+  // ningún aviso de que le falta crear su programa" — mismo hallazgo y
+  // mismo arreglo que ya se hizo en Home para esta persona: antes se ocultaba
+  // la tarjeta entera, dejando un hueco sin ninguna invitación a generar su
+  // programa, a pesar de que WOD es una de las 5 pestañas principales).
+  const isTrackingOnly = currentProfile && currentProfile.role === 'athlete' && currentProfile.plan !== 'coached';
+  if(!r && isTrackingOnly){
+    card.style.display = 'block';
+    document.getElementById('activeProgramBadge').textContent = '';
+    document.getElementById('activeProgramContent').innerHTML = `<p class="muted">Todavía no tienes un programa — crealo en Programación.</p>
+      <button class="btn small secondary" style="width:100%; margin-top:10px;" onclick="showView('prog')">Ir a Programación</button>`;
+    return;
+  }
   if(!r){ card.style.display='none'; return; }
   card.style.display='block';
 
