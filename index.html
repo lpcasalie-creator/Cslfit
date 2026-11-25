@@ -9462,7 +9462,13 @@ async function renderAthletesList(){
     const inactiveDays = lastActivity ? Math.floor((new Date() - lastActivity) / 86400000) : null;
     const isInactive = inactiveDays === null || inactiveDays > 7;
     return {...a, _days:days, _urgency:urgency, _lastActivity:lastActivity, _inactiveDays:inactiveDays, _isInactive:isInactive};
-  }).sort((a,b)=> b._urgency - a._urgency);
+  // Fix (auditoría coach: "la lista solo prioriza pago, un alumno inactivo
+  // pero al día queda enterrado donde sea que caiga por orden natural" — ya
+  // se calculaba _isInactive, se coloreaba en rojo, pero nunca se usaba para
+  // ORDENAR. Desempate dentro de la misma urgencia de pago: inactivo primero
+  // — retención importa tanto como cobro, y hoy requería leer fila por fila
+  // para notarlo).
+  }).sort((a,b)=> (b._urgency - a._urgency) || (b._isInactive - a._isInactive));
 
   const sinPago = withPayment.filter(a=>a._urgency===3).length;
   const atrasados = withPayment.filter(a=>a._urgency===2).length;
@@ -9513,12 +9519,19 @@ async function renderAthletesList(){
           <button class="btn small secondary" onclick="goToAthleteMessages('${a.id}')">Mensaje</button>
         </span>
       </div>
-      <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <!-- Fix (auditoría de diseño/coach: "6 acciones con el mismo peso
+           visual, nada distingue lo frecuente de lo administrativo" — sin
+           una acción claramente más común entre las 4 de arriba (confirmado
+           con Luis), no se fuerza una "principal" artificial. En cambio se
+           separa la fila de plan/pago como su propia zona — borde arriba,
+           más angosta — para que el ojo la lea como "configuración", no como
+           una quinta y sexta acción más mezcladas con las de rutina. -->
+      <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border); display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
         <select style="width:auto; font-size:11px; padding:4px 38px 4px 8px; border-color:var(--lime); color:var(--lime);" aria-label="Tipo de plan de ${escapeHtml(a.full_name || a.email)}" onchange="changeAthletePlan('${a.id}', this.value)">
           <option value="tracking" ${a.plan!=='coached'?'selected':''}>Solo seguimiento</option>
           <option value="coached" ${a.plan==='coached'?'selected':''}>Con programación</option>
         </select>
-        <button class="btn small secondary" onclick="markPaidToday('${a.id}')">Marcar pagado hoy</button>
+        <button class="btn small secondary" style="font-size:11px; padding:6px 10px;" onclick="markPaidToday('${a.id}')">Marcar pagado hoy</button>
       </div>
       <div id="athleteProgress_${a.id}" style="display:none; margin-top:10px;"></div>
       <div id="assignForm_${a.id}" style="display:none; margin-top:10px;">
