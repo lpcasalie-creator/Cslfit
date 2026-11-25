@@ -11090,6 +11090,15 @@ function onBenchmarkPick(){
 function timeToSeconds(str){
   const parts = str.split(':').map(Number);
   if(parts.length===2 && !isNaN(parts[0]) && !isNaN(parts[1])) return parts[0]*60+parts[1];
+  // Fix (auditoría de diseño, caso real de HYROX: el placeholder pide
+  // "mm:ss" con minutos libres — ej. "72:45" para 1h12m45s — pero un tiempo
+  // de más de una hora es natural escribirlo como "1:12:45" (hh:mm:ss). Antes
+  // ese formato de 3 partes no entraba en el if de arriba y caía a
+  // parseFloat(str), que corta en el primer ":" — "1:12:45" se convertía en
+  // el número 1, guardado como 1 SEGUNDO sin ningún error visible (pasaba la
+  // validación de ">0" igual). fmt() ya mostraba bien minutos>59 de vuelta —
+  // el hueco era solo al leer el input, no al mostrarlo.
+  if(parts.length===3 && parts.every(p=>!isNaN(p))) return parts[0]*3600+parts[1]*60+parts[2];
   return parseFloat(str)||null;
 }
 async function saveScore(btn){
