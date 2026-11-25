@@ -9575,24 +9575,30 @@ async function renderAthletesList(){
         <div style="background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:10px; margin-bottom:12px;">
           <p style="font-size:11px; font-weight:700; color:var(--lime); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Calcular sugerido</p>
           <p class="muted" id="macroBodyData_${a.id}" style="font-size:11px; margin-bottom:8px;">Cargando datos de composición corporal...</p>
+          <!-- Fix (auditoría de diseño: "mismo problema de texto cortado que
+               ya se arregló una vez para el selector de tipo de plan, pero no
+               se aplicó como criterio acá" — opción corta + aclaración debajo,
+               en vez de meter el detalle adentro de una opción que no hace
+               wrap en un <select> de 2 columnas angosto). -->
           <div class="grid2">
             <div><label style="font-size:11px;">Nivel de actividad</label>
               <select id="macroActivity_${a.id}" style="font-size:12px;">
                 <option value="sedentario">Sedentario</option>
-                <option value="ligero">Ligero (1-3 días/sem)</option>
-                <option value="moderado" selected>Moderado (3-5 días/sem)</option>
-                <option value="activo">Activo (6-7 días/sem)</option>
-                <option value="muy_activo">Muy activo / trabajo físico</option>
+                <option value="ligero">Ligero</option>
+                <option value="moderado" selected>Moderado</option>
+                <option value="activo">Activo</option>
+                <option value="muy_activo">Muy activo</option>
               </select>
             </div>
             <div><label style="font-size:11px;">Objetivo</label>
               <select id="macroGoal_${a.id}" style="font-size:12px;">
-                <option value="deficit">Déficit (bajar grasa)</option>
+                <option value="deficit">Déficit</option>
                 <option value="mantenimiento" selected>Mantenimiento</option>
-                <option value="superavit">Superávit (ganar masa)</option>
+                <option value="superavit">Superávit</option>
               </select>
             </div>
           </div>
+          <p class="muted" style="font-size:10px; margin-top:4px;">Actividad — días de entreno/sem: ligero 1-3 · moderado 3-5 · activo 6-7 · muy activo + trabajo físico. Objetivo: déficit baja grasa, superávit gana masa.</p>
           <button class="btn small secondary" style="margin-top:8px; width:100%;" onclick="calcularMacrosAuto('${a.id}')">Calcular sugerido</button>
         </div>
         <label>Calorías objetivo</label>
@@ -9709,7 +9715,10 @@ async function populateRankingMovements(){
   const { data: scores } = await sb.from('scores').select('name').in('user_id', athleteIds);
   const nombres = [...new Set((scores||[]).map(s=>s.name))].sort((a,b)=>a.localeCompare(b,'es'));
   if(!nombres.length){
-    sel.innerHTML = '<option value="">— Tus alumnos no tienen scores todavía —</option>';
+    // Fix (auditoría de diseño: texto largo cortado en un <select> cerrado,
+    // mismo problema que el resto de selects arreglados hoy) — acortado al
+    // mismo largo que el placeholder hermano de arriba ("Sin alumnos todavía").
+    sel.innerHTML = '<option value="">— Sin scores todavía —</option>';
     document.getElementById('rankingList').innerHTML = '';
     return;
   }
