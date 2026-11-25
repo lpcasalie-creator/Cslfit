@@ -1981,7 +1981,12 @@ async function renderHomeDashboard(){
     onboardCard.style.display = 'block';
     onboardCard.innerHTML = `
       <div class="onboard-card">
-        <div style="font-size:26px;">📈</div>
+        <!-- Fix (auditoría de diseño: "un emoji bitmap se coló acá, el resto
+             de la app usa SVG monocromático" — ya existía un comentario de
+             una limpieza anterior exactamente de este mismo problema en otro
+             botón; este caso se les pasó. Mismo trazo que ya usa el ícono de
+             la pestaña RM, para que sea reconocible como "lo mismo". -->
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="width:32px; height:32px; margin:0 auto 10px; display:block; fill:none; stroke:var(--lime); stroke-width:2; stroke-linecap:round; stroke-linejoin:round;"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>
         <h3>Acá va a vivir tu progreso</h3>
         <p>Registra tu primer 1RM o resultado y la próxima vez que abras la app vas a ver tu evolución, como el resto de tus compañeros.</p>
         <button class="btn small" style="margin-top:10px;" onclick="showView('rm')">+ Cargar mi primer 1RM</button>
