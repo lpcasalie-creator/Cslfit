@@ -9250,6 +9250,11 @@ function selectProgDay(dayIdx){ renderProgDayDetail(dayIdx); }
 
 /* ---------------- ALUMNOS (solo coach) ---------------- */
 let _coachProgramsCache = [];
+// Fix (pedido: acciones en lote — marcar pagados y reasignar programa a
+// varios alumnos de una, en vez de uno por uno). Vive fuera de
+// renderAthletesList() porque tiene que sobrevivir a re-renders parciales
+// (ej. al tildar un checkbox no se vuelve a pintar toda la lista).
+let _selectedAthleteIds = new Set();
 function toggleInvitePlanField(){
   const isCoach = document.getElementById('inviteRole').value === 'coach';
   document.getElementById('invitePlanWrap').style.display = isCoach ? 'none' : 'block';
@@ -9381,6 +9386,73 @@ async function changeAthletePlan(athleteId, plan){
   await renderAthletesList();
 }
 
+/* ---------------- ALUMNOS: acciones en lote ---------------- */
+// Fix (pedido: marcar pagados y reasignar programa a varios alumnos de una).
+// toggleAthleteSelect/toggleSelectAllAthletes solo tocan el DOM de la barra
+// de acciones, no vuelven a pintar toda la lista — así no se cierran los
+// paneles de Progreso/Asignar/Macros que el coach pueda tener abiertos al
+// ir tildando alumnos.
+function _refreshBulkActionsUI(){
+  const bar = document.getElementById('bulkActionsBar');
+  const checks = document.querySelectorAll('.athlete-select-check');
+  const n = _selectedAthleteIds.size;
+  if(bar){
+    bar.style.display = n ? 'flex' : 'none';
+    const countSpan = bar.querySelector('span');
+    if(countSpan) countSpan.textContent = `${n} seleccionado${n>1?'s':''}`;
+  }
+  const selAll = document.getElementById('selectAllAthletes');
+  if(selAll) selAll.checked = checks.length>0 && n===checks.length;
+}
+function toggleAthleteSelect(athleteId, checked){
+  if(checked) _selectedAthleteIds.add(athleteId); else _selectedAthleteIds.delete(athleteId);
+  _refreshBulkActionsUI();
+}
+function toggleSelectAllAthletes(checked){
+  document.querySelectorAll('.athlete-select-check').forEach(cb=>{
+    const id = cb.dataset.id;
+    cb.checked = checked;
+    if(checked) _selectedAthleteIds.add(id); else _selectedAthleteIds.delete(id);
+  });
+  _refreshBulkActionsUI();
+}
+function clearAthleteSelection(){
+  _selectedAthleteIds.clear();
+  renderAthletesList();
+}
+async function bulkMarkPaidToday(){
+  const ids = Array.from(_selectedAthleteIds);
+  if(!ids.length) return;
+  if(!confirm(`¿Marcar a ${ids.length} alumno${ids.length>1?'s':''} como pagado${ids.length>1?'s':''} hoy?`)) return;
+  const today = _todayDateStr();
+  const { error } = await sb.from('profiles').update({ last_payment_date: today }).in('id', ids).eq('coach_id', currentUser.id);
+  if(error){ toast('Error al registrar pagos: '+error.message, 'error'); return; }
+  toast(`${ids.length} alumno${ids.length>1?'s':''} marcado${ids.length>1?'s':''} como pagado hoy.`, 'success');
+  _selectedAthleteIds.clear();
+  await renderAthletesList();
+}
+async function bulkAssignProgram(){
+  const ids = Array.from(_selectedAthleteIds);
+  if(!ids.length) return;
+  const programId = document.getElementById('bulkAssignProg').value;
+  if(!programId){ toast('Elegí un programa primero.', 'error'); return; }
+  if(!confirm(`¿Asignar este programa a ${ids.length} alumno${ids.length>1?'s':''}, empezando hoy?`)) return;
+  const startDate = _todayDateStr();
+  // Mismo criterio select-luego-branch que confirmAssignAthlete (no hay un
+  // unique constraint en assignments.athlete_id para usar .upsert() acá).
+  const results = await Promise.all(ids.map(async (athleteId)=>{
+    const { data: existing } = await sb.from('assignments').select('id').eq('athlete_id', athleteId).maybeSingle();
+    return existing
+      ? sb.from('assignments').update({program_id:programId, start_date:startDate}).eq('id', existing.id)
+      : sb.from('assignments').insert({athlete_id:athleteId, program_id:programId, start_date:startDate});
+  }));
+  const failed = results.filter(r=>r.error).length;
+  if(failed) toast(`${failed} de ${ids.length} asignaciones fallaron.`, 'error');
+  else toast(`Programa asignado a ${ids.length} alumno${ids.length>1?'s':''}, empezando hoy.`, 'success');
+  _selectedAthleteIds.clear();
+  await renderAthletesList();
+}
+
 async function getLastActivityMap(athleteIds){
   if(!athleteIds.length) return {};
   // rm_entries se retiró (ver saveRM) — un 1RM ahora vive en `scores`, ya cubierto
@@ -9463,6 +9535,11 @@ async function renderAthletesList(){
   const el = document.getElementById('athletesList');
   const { data: athletes, error: e1 } = await sb.from('profiles').select('*').eq('role','athlete').eq('coach_id', currentUser.id);
   const athleteIds = (athletes||[]).map(a=>a.id);
+  // Poda selecciones de alumnos que ya no están en la lista (ej. se borró
+  // uno entre renders) — evita que una acción en lote intente operar sobre
+  // un id que ya no existe.
+  const athleteIdSet = new Set(athleteIds);
+  Array.from(_selectedAthleteIds).forEach(id=>{ if(!athleteIdSet.has(id)) _selectedAthleteIds.delete(id); });
   renderReadinessAlerts(athleteIds, athletes||[]); // no bloquea el resto del render — su propia tarjeta
   const { data: assigns, error: e2 } = athleteIds.length
     ? await sb.from('assignments').select('id, athlete_id, program_id, start_date, programs(name, weeks)').in('athlete_id', athleteIds)
@@ -9519,8 +9596,20 @@ async function renderAthletesList(){
   if(porVencer) summaryParts.push(`<span style="color:#e8d16a;">${porVencer} por vencer</span>`);
   if(alDia) summaryParts.push(`<span style="color:#8fd694;">${alDia} al día</span>`);
   if(inactivos) summaryParts.push(`<span style="color:#ff8c8c;">${inactivos} inactivo${inactivos>1?'s':''}</span>`);
-  const summaryHtml = `<p style="font-size:13px; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--border);">
-    <b>${athletes.length}</b> alumno${athletes.length>1?'s':''} · ${summaryParts.join(' · ')}</p>`;
+  const allSelected = athletes.length>0 && athletes.every(a=>_selectedAthleteIds.has(a.id));
+  const summaryHtml = `<p style="font-size:13px; margin-bottom:8px; padding-bottom:10px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+    <span><b>${athletes.length}</b> alumno${athletes.length>1?'s':''} · ${summaryParts.join(' · ')}</span>
+    <label style="font-size:12px; display:flex; align-items:center; gap:4px; cursor:pointer; font-weight:400;">
+      <input type="checkbox" id="selectAllAthletes" ${allSelected?'checked':''} onchange="toggleSelectAllAthletes(this.checked)"> Seleccionar todos
+    </label>
+  </p>
+  <div id="bulkActionsBar" style="display:${_selectedAthleteIds.size?'flex':'none'}; gap:8px; flex-wrap:wrap; align-items:center; background:var(--bg2); border:1px solid var(--lime); border-radius:8px; padding:10px; margin-bottom:12px;">
+    <span style="font-size:12px; font-weight:700;">${_selectedAthleteIds.size} seleccionado${_selectedAthleteIds.size>1?'s':''}</span>
+    <button class="btn small secondary" style="font-size:11px;" onclick="bulkMarkPaidToday()">Marcar pagado hoy</button>
+    <select id="bulkAssignProg" style="width:auto; font-size:11px; padding:4px 30px 4px 8px;">${progOptions(null)}</select>
+    <button class="btn small secondary" style="font-size:11px;" onclick="bulkAssignProgram()">Asignar programa</button>
+    <button class="btn small secondary" style="font-size:11px;" onclick="clearAthleteSelection()">Cancelar</button>
+  </div>`;
 
   const rowsHtml = withPayment.map(a=>{
     const asg = map[a.id];
@@ -9543,11 +9632,14 @@ async function renderAthletesList(){
 
     return `<div style="padding:10px 0; border-bottom:1px solid var(--border);">
       <div class="athlete-row" style="border:none; padding:0;">
-        <div>
+        <div style="display:flex; gap:8px; align-items:flex-start;">
+          <input type="checkbox" class="athlete-select-check" data-id="${a.id}" ${_selectedAthleteIds.has(a.id)?'checked':''} onchange="toggleAthleteSelect('${a.id}', this.checked)" style="margin-top:3px; flex-shrink:0;" aria-label="Seleccionar a ${escapeHtml(a.full_name || a.email)}">
+          <div>
           <b>${a.full_name || a.email}</b>
           <br><span class="muted" style="font-size:12px;">Ingresó: ${joinedDate} · ${info}</span>
           <br><span style="font-size:12px; color:${paymentColor};">${paymentInfo}</span>
           <br><span style="font-size:12px; color:${activityColor};">${activityInfo}</span>
+          </div>
         </div>
         <span style="display:flex; gap:6px; flex-shrink:0; flex-wrap:wrap;">
           <button class="btn small secondary" onclick="toggleAthleteProgress('${a.id}')">Progreso</button>
