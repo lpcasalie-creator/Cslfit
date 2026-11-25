@@ -3322,11 +3322,13 @@ async function saveMacroLog(btn){
   const textoOriginal = btn.textContent;
   btn.textContent = 'Guardando...';
   try{
-    const { data: existing } = await sb.from('nutrition_logs').select('id')
-      .eq('user_id', currentUser.id).eq('log_date', date).maybeSingle();
-    const { error } = existing
-      ? await sb.from('nutrition_logs').update(row).eq('id', existing.id)
-      : await sb.from('nutrition_logs').insert(row);
+    // Fix (auditoría de ingeniería: "select-then-branch tiene una ventana de
+    // carrera entre dos pestañas/dispositivos — ambas ven existing=null y
+    // ambas insertan, chocando contra la restricción única real"). upsert()
+    // es atómico del lado de la base — nutrition_logs ya tiene
+    // unique(user_id, log_date) desde que se creó, así que esto no necesita
+    // SQL nuevo (a diferencia de body_entries, que sí lo necesitaría).
+    const { error } = await sb.from('nutrition_logs').upsert(row, { onConflict: 'user_id,log_date' });
     if(error){ toast('Error al guardar: '+error.message, 'error'); return; }
     ['macroLogCals','macroLogProt','macroLogCarb','macroLogFat'].forEach(id=>document.getElementById(id).value='');
     await renderMacroLogList();
@@ -9817,11 +9819,11 @@ async function saveMacroTarget(athleteId, btn){
   btn.textContent = 'Guardando...';
   const msgEl = document.getElementById(`macroMsg_${athleteId}`);
   try{
-    const { data: existing } = await sb.from('nutrition_targets').select('id').eq('athlete_id', athleteId).maybeSingle();
+    // Fix (auditoría de ingeniería, misma causa que saveMacroLog): upsert()
+    // atómico en vez de select-then-branch — nutrition_targets ya tiene
+    // unique(athlete_id) desde que se creó.
     const row = { athlete_id: athleteId, calories, protein, carbs, fats, updated_at: new Date().toISOString() };
-    const { error } = existing
-      ? await sb.from('nutrition_targets').update(row).eq('id', existing.id)
-      : await sb.from('nutrition_targets').insert(row);
+    const { error } = await sb.from('nutrition_targets').upsert(row, { onConflict: 'athlete_id' });
     if(error){ toast('Error al guardar macros: '+error.message, 'error'); return; }
     if(msgEl) msgEl.textContent = '✓ Macros guardadas.';
     toast('Macros actualizadas', 'success');
