@@ -256,6 +256,10 @@
   .msg-bubble{ max-width:78%; padding:9px 12px; border-radius:14px; font-size:13px; line-height:1.4; word-break:break-word; }
   .msg-row.mine .msg-bubble{ background:var(--lime); color:#0d0d0d; border-bottom-right-radius:3px; }
   .msg-row:not(.mine) .msg-bubble{ background:var(--bg2); border:1px solid var(--border); color:var(--white); border-bottom-left-radius:3px; }
+  /* Fix (auditoría del alumno: mensaje nuevo indistinguible de uno ya leído
+     dentro del hilo) — borde izquierdo lima, mismo acento que ya usa el
+     resto de la app para "esto es nuevo/importante" (ej. el toast de PR). */
+  .msg-row:not(.mine) .msg-bubble.msg-unread{ border-left:3px solid var(--lime); }
   .msg-meta{ font-size:10px; color:var(--gray-dim); margin-top:3px; }
   .msg-row.mine .msg-meta{ text-align:right; }
   .conv-item{ display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--border); cursor:pointer; background:none; border-left:none; border-right:none; border-top:none; width:100%; text-align:left; font:inherit; color:inherit; }
@@ -11484,10 +11488,18 @@ async function renderMessageThread(athleteId){
   if(myReqId !== _msgThreadReqId) return;
   if(error){ list.innerHTML = `<p class="muted">No se pudieron cargar los mensajes: ${error.message}</p>`; return; }
   const rows = msgs || [];
+  // Fix (auditoría del alumno: "un mensaje nuevo no se distingue de uno ya
+  // leído adentro del chat" — el aviso rojo en la navegación sí funciona,
+  // pero una vez adentro del hilo todos los globos se ven iguales). Se
+  // calcula ANTES del update de abajo que marca read_at en la base — "rows"
+  // sigue reflejando cómo estaba cada mensaje al entrar al hilo, que es
+  // justo lo que importa mostrar (si ya se marca al toque, nunca se vería
+  // la marca de "nuevo").
   list.innerHTML = rows.length ? rows.map(m=>{
     const mine = m.sender_id === currentUser.id;
+    const isUnread = !mine && !m.read_at;
     const time = new Date(m.created_at).toLocaleString('es-CL', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
-    return `<div class="msg-row ${mine?'mine':''}"><div><div class="msg-bubble">${escapeHtml(m.body)}</div><div class="msg-meta">${time}</div></div></div>`;
+    return `<div class="msg-row ${mine?'mine':''}"><div><div class="msg-bubble${isUnread?' msg-unread':''}">${escapeHtml(m.body)}</div><div class="msg-meta">${time}${isUnread?' · <span style="color:var(--lime); font-weight:700;">nuevo</span>':''}</div></div></div>`;
   }).join('') : `<p class="muted" style="text-align:center;">${isCoach
     ? 'Todavía no hay mensajes con este alumno — escribile algo para arrancar la conversación.'
     : 'Escribile directo a tu coach — dudas de técnica, feedback de tu última sesión, lo que necesites.'}</p>`;
